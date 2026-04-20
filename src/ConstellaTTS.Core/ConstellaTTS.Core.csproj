@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="12.0.1" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AvaloniaResource Include="**\*.axaml" Exclude="obj\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Update="Windows\MainWindow.axaml.cs">
+            <DependentUpon>MainWindow.axaml</DependentUpon>
+            <SubType>Code</SubType>
+        </Compile>
+    </ItemGroup>
+
+</Project>
