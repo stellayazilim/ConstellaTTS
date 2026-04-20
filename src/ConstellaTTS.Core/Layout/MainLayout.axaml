@@ -1,0 +1,337 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:ConstellaTTS.Core.Controls"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+             x:Class="ConstellaTTS.Core.Layout.MainLayout">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="TimelineAccentLine" Color="#3D2A6A" />
+    </UserControl.Resources>
+
+    <Panel>
+
+        <Grid RowDefinitions="Auto,Auto,Auto,*">
+
+            <!-- Row 0: Toolbar -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource BgToolbar}"
+                    BorderBrush="{StaticResource BorderSubtle}"
+                    BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="Auto,Auto,*">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" Margin="8,4">
+                        <controls:PlayerButton Foreground="#7c6af7" ToolTip.Tip="Go to Start">
+                            <controls:GoToStartIcon />
+                        </controls:PlayerButton>
+                        <controls:PlayerButton Foreground="#60aaff" ToolTip.Tip="Play">
+                            <controls:PlayIcon />
+                        </controls:PlayerButton>
+                        <controls:PlayerButton Foreground="#d060ff" ToolTip.Tip="Stop">
+                            <controls:StopIcon />
+                        </controls:PlayerButton>
+                    </StackPanel>
+                    <Border Grid.Column="1" Width="1" Margin="4,8" Background="{StaticResource BorderMid}" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,4" Spacing="4" x:Name="ToolbarSlot" />
+                </Grid>
+            </Border>
+
+            <!-- Row 1: Logo + ViewTools -->
+            <Border Grid.Row="1"
+                    Background="{StaticResource BgLogoRow}"
+                    BorderBrush="{StaticResource BorderSubtle}"
+                    BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="200,Auto,*">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="10,4">
+                        <Image Source="{SvgImage avares://ConstellaTTS.Core/Assets/logo.svg}"
+                               Width="36" Height="36" />
+                        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" FontSize="13">
+                            <TextBlock.Foreground>
+                                <StaticResource ResourceKey="NeonGradient" />
+                            </TextBlock.Foreground>
+                            ConstellaTTS
+                        </TextBlock>
+                    </StackPanel>
+                    <Border Grid.Column="1" Width="1" Margin="0,6" Background="{StaticResource BorderMid}" />
+                    <ContentControl Grid.Column="2" Margin="12,6" x:Name="ViewToolsSlot" />
+                </Grid>
+            </Border>
+
+            <!-- Row 2: Sol panel + Timeline -->
+            <Grid Grid.Row="2" ColumnDefinitions="200,*">
+
+                <!-- Sol: Section başlıkları -->
+                <Border Grid.Column="0"
+                        Background="{StaticResource BgSurface}"
+                        BorderBrush="{StaticResource BorderSubtle}"
+                        BorderThickness="0,0,1,0">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                Background="{StaticResource BgRibbon}"
+                                BorderBrush="{StaticResource BorderSubtle}"
+                                BorderThickness="0,0,0,1"
+                                Height="32">
+                            <TextBlock Text="SECTIONS" VerticalAlignment="Center"
+                                       Margin="12,0" FontSize="10" FontWeight="Medium"
+                                       Foreground="{StaticResource FgMuted}" />
+                        </Border>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="0">
+                                <Border Height="56" Background="{StaticResource BgSection}"
+                                        BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="4,*">
+                                        <Border Grid.Column="0" Background="{StaticResource AccentPurple}" />
+                                        <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Giriş" FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgPrimary}" />
+                                            <TextBlock Text="2 track · 0:32" FontSize="10" Foreground="{StaticResource FgMuted}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <Border Height="56" Background="{StaticResource BgSection}"
+                                        BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="4,*">
+                                        <Border Grid.Column="0" Background="{StaticResource AccentBlue}" />
+                                        <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Bölüm I" FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgPrimary}" />
+                                            <TextBlock Text="3 track · 1:15" FontSize="10" Foreground="{StaticResource FgMuted}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <Border Height="56" Background="{StaticResource BgSection}"
+                                        BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="4,*">
+                                        <Border Grid.Column="0" Background="{StaticResource AccentPink}" />
+                                        <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Bölüm II" FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgPrimary}" />
+                                            <TextBlock Text="2 track · 0:58" FontSize="10" Foreground="{StaticResource FgMuted}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <Border Height="56" Background="{StaticResource BgElevated}"
+                                        BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="4,*">
+                                        <Border Grid.Column="0" Background="{StaticResource AccentRose}" />
+                                        <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Kapanış" FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgSecondary}" />
+                                            <TextBlock Text="1 track · 0:20" FontSize="10" Foreground="{StaticResource FgMuted}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Sağ: Timeline -->
+                <Border Grid.Column="1" Background="{StaticResource BgBase}">
+                    <Panel>
+                        <Grid RowDefinitions="32,56,56,56,56,*">
+                            <Border Grid.Row="0" Background="{StaticResource RulerBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,*,*,*,*,*,*,*">
+                                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="0:00" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="0:08" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource AccentPurple}" BorderThickness="0,0,1,0" Opacity="0.5">
+                                        <TextBlock Text="0:16" FontSize="10" Foreground="{StaticResource AccentPurple}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="0:24" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="0:32" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="5" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="0:40" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="6" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="0:48" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="7">
+                                        <TextBlock Text="0:56" FontSize="10" Foreground="{StaticResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,*,*,*,*,*,*,*" Background="{StaticResource BgTrack}">
+                                    <Border Grid.Column="0" Grid.ColumnSpan="2" Background="{StaticResource TrackNarrator}" CornerRadius="3" Margin="4,12,4,12">
+                                        <TextBlock Text="Narrator · Giriş metni..." FontSize="10" Foreground="{StaticResource AccentPurple}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource AccentPurple}" BorderThickness="0,0,1,0" Opacity="0.15" IsHitTestVisible="False" />
+                                    <Border Grid.Column="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="5" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="6" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="2" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,*,*,*,*,*,*,*" Background="{StaticResource BgTrackAlt}">
+                                    <Border Grid.Column="1" Grid.ColumnSpan="2" Background="{StaticResource TrackCharacterA}" CornerRadius="3" Margin="4,12,4,12">
+                                        <TextBlock Text="Karakter A · Dialog..." FontSize="10" Foreground="{StaticResource AccentBlue}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource AccentPurple}" BorderThickness="0,0,1,0" Opacity="0.15" IsHitTestVisible="False" />
+                                    <Border Grid.Column="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="5" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="6" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,*,*,*,*,*,*,*" Background="{StaticResource BgTrack}">
+                                    <Border Grid.Column="3" Grid.ColumnSpan="3" Background="{StaticResource TrackNarrator}" CornerRadius="3" Margin="4,12,4,12">
+                                        <TextBlock Text="Narrator · Bölüm I açılışı..." FontSize="10" Foreground="{StaticResource AccentPurple}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource AccentPurple}" BorderThickness="0,0,1,0" Opacity="0.15" IsHitTestVisible="False" />
+                                    <Border Grid.Column="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="5" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="6" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,*,*,*,*,*,*,*" Background="{StaticResource BgTrackAlt}">
+                                    <Border Grid.Column="4" Grid.ColumnSpan="2" Background="{StaticResource TrackCharacterB}" CornerRadius="3" Margin="4,12,4,12">
+                                        <TextBlock Text="Karakter B · Cevap..." FontSize="10" Foreground="{StaticResource AccentPink}" VerticalAlignment="Center" Margin="8,0" />
+                                    </Border>
+                                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource AccentPurple}" BorderThickness="0,0,1,0" Opacity="0.15" IsHitTestVisible="False" />
+                                    <Border Grid.Column="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="5" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="6" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="5" Background="{StaticResource BgBase}">
+                                <Grid ColumnDefinitions="*,*,*,*,*,*,*,*">
+                                    <Border Grid.Column="0" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource AccentPurple}" BorderThickness="0,0,1,0" Opacity="0.15" IsHitTestVisible="False" />
+                                    <Border Grid.Column="3" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="4" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="5" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                    <Border Grid.Column="6" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0" IsHitTestVisible="False" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Playhead -->
+                        <Canvas IsHitTestVisible="True" ClipToBounds="True">
+                            <Border Canvas.Top="0" Canvas.Left="160"
+                                    Width="8" Height="9999"
+                                    IsHitTestVisible="True"
+                                    Cursor="SizeWestEast"
+                                    Background="Transparent">
+                                <Border>
+                                    <Border.Styles>
+                                        <Style Selector="Border">
+                                            <Setter Property="Width" Value="2" />
+                                            <Setter Property="HorizontalAlignment" Value="Center" />
+                                            <Setter Property="Transitions">
+                                                <Transitions>
+                                                    <DoubleTransition Property="Width" Duration="0:0:0.1" />
+                                                </Transitions>
+                                            </Setter>
+                                            <Setter Property="Background">
+                                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                                    <GradientStop Color="#9060f7" Offset="0" />
+                                                    <GradientStop Color="#9060f700" Offset="0.85" />
+                                                </LinearGradientBrush>
+                                            </Setter>
+                                        </Style>
+                                        <Style Selector="Border:pointerover">
+                                            <Setter Property="Width" Value="4" />
+                                        </Style>
+                                    </Border.Styles>
+                                </Border>
+                            </Border>
+                        </Canvas>
+
+                    </Panel>
+                </Border>
+
+            </Grid>
+
+        </Grid>
+
+        <!-- Off-canvas panel -->
+        <Border x:Name="OffCanvasPanel"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Stretch"
+                Width="300"
+                Margin="0,8,40,8"
+                CornerRadius="16"
+                Background="{StaticResource BgSurface}"
+                BorderBrush="{StaticResource BorderMid}"
+                BorderThickness="1">
+            <Border.RenderTransform>
+                <TranslateTransform X="400" />
+            </Border.RenderTransform>
+            <Grid RowDefinitions="Auto,*,Auto">
+                <Border Grid.Row="0" Padding="16,14" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="Panel" FontSize="13" FontWeight="Medium" VerticalAlignment="Center">
+                            <TextBlock.Foreground>
+                                <StaticResource ResourceKey="NeonGradient" />
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                        <Button Grid.Column="1" Content="&#x2715;" FontSize="12"
+                                Foreground="{StaticResource FgMuted}"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="6,4" x:Name="OffCanvasCloseBtn" />
+                    </Grid>
+                </Border>
+                <ScrollViewer Grid.Row="1" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Section Ayarları" FontSize="11" FontWeight="Medium" Foreground="{StaticResource FgMuted}" />
+                        <Border Background="{StaticResource BgElevated}" CornerRadius="8" Padding="12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Başlık" FontSize="11" Foreground="{StaticResource FgSecondary}" />
+                                <Border Background="{StaticResource BgBase}" CornerRadius="6" Padding="10,8" BorderBrush="{StaticResource BorderMid}" BorderThickness="1">
+                                    <TextBlock Text="Giriş" FontSize="12" Foreground="{StaticResource FgPrimary}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{StaticResource BgElevated}" CornerRadius="8" Padding="12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Ses Modeli" FontSize="11" Foreground="{StaticResource FgSecondary}" />
+                                <Border Background="{StaticResource BgBase}" CornerRadius="6" Padding="10,8" BorderBrush="{StaticResource BorderMid}" BorderThickness="1">
+                                    <TextBlock Text="Narrator · Türkçe" FontSize="12" Foreground="{StaticResource FgPrimary}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{StaticResource BgElevated}" CornerRadius="8" Padding="12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Hız" FontSize="11" Foreground="{StaticResource FgSecondary}" />
+                                <Border Background="{StaticResource BgBase}" CornerRadius="6" Padding="10,8" BorderBrush="{StaticResource BorderMid}" BorderThickness="1">
+                                    <TextBlock Text="1.0&#xD7;" FontSize="12" Foreground="{StaticResource FgPrimary}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+                <Border Grid.Row="2" Padding="16,12" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                            Padding="0,10" CornerRadius="8" Content="Kaydet">
+                        <Button.Background>
+                            <StaticResource ResourceKey="NeonGradient" />
+                        </Button.Background>
+                        <Button.Foreground>
+                            <SolidColorBrush Color="#FFFFFF" />
+                        </Button.Foreground>
+                    </Button>
+                </Border>
+            </Grid>
+        </Border>
+
+    </Panel>
+
+</UserControl>

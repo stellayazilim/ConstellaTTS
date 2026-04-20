@@ -1,16 +1,74 @@
-﻿<Styles xmlns="https://github.com/avaloniaui"
+<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="using:ConstellaTTS.Core.Controls">
+
     <Design.PreviewWith>
-        <controls:PlayerButton />
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="16" Background="#0D0D14">
+            <controls:PlayerButton Foreground="#7c6af7">
+                <controls:GoToStartIcon />
+            </controls:PlayerButton>
+            <controls:PlayerButton Foreground="#60aaff">
+                <controls:PlayIcon />
+            </controls:PlayerButton>
+            <controls:PlayerButton Foreground="#d060ff">
+                <controls:StopIcon />
+            </controls:PlayerButton>
+        </StackPanel>
     </Design.PreviewWith>
 
     <Style Selector="controls|PlayerButton">
-        <!-- Set Defaults -->
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <ControlTemplate>
-                <TextBlock Text="Templated Control" />
+                <Border x:Name="Root"
+                        Width="32" Height="32"
+                        CornerRadius="8">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                            <GradientStop Color="#2A1F6A" Offset="0" />
+                            <GradientStop Color="#3A1A5C" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.Transitions>
+                        <Transitions>
+                            <BrushTransition Property="Background" Duration="0:0:0.12" />
+                        </Transitions>
+                    </Border.Transitions>
+
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                </Border>
             </ControlTemplate>
         </Setter>
     </Style>
+
+    <!-- Hover -->
+    <Style Selector="controls|PlayerButton:pointerover /template/ Border#Root">
+        <Setter Property="Background">
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Color="#3A2A8A" Offset="0" />
+                <GradientStop Color="#4A1A7A" Offset="1" />
+            </LinearGradientBrush>
+        </Setter>
+    </Style>
+
+    <!-- Pressed -->
+    <Style Selector="controls|PlayerButton:pressed /template/ Border#Root">
+        <Setter Property="Background">
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Color="#4A3A9A" Offset="0" />
+                <GradientStop Color="#5A2A8A" Offset="1" />
+            </LinearGradientBrush>
+        </Setter>
+        <Setter Property="RenderTransform">
+            <ScaleTransform ScaleX="0.93" ScaleY="0.93" />
+        </Setter>
+    </Style>
+
 </Styles>

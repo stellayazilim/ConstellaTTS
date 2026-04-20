@@ -9,17 +9,16 @@
     <ItemGroup>
         <PackageReference Include="Avalonia" Version="12.0.1" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+        <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.3" />
+        <PackageReference Include="Svg.Skia" Version="4.3.0" />
     </ItemGroup>
 
     <ItemGroup>
-        <AvaloniaResource Include="**\*.axaml" Exclude="obj\**" />
+        <ProjectReference Include="..\ConstellaTTS.SDK\ConstellaTTS.SDK.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Update="Windows\MainWindow.axaml.cs">
-            <DependentUpon>MainWindow.axaml</DependentUpon>
-            <SubType>Code</SubType>
-        </Compile>
+        <AvaloniaResource Include="Assets\**"  />
     </ItemGroup>
 
 </Project>

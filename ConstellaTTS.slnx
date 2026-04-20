@@ -1,1 +1,7 @@
-<Solution />
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ConstellaTTS.Avalonia/ConstellaTTS.Avalonia.csproj" />
+    <Project Path="src/ConstellaTTS.Core/ConstellaTTS.Core.csproj" />
+    <Project Path="src/ConstellaTTS.SDK/ConstellaTTS.SDK.csproj" />
+  </Folder>
+</Solution>

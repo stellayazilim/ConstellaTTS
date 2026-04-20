@@ -1,0 +1,67 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:ConstellaTTS.Core.Controls">
+
+    <!-- PlayIcon -->
+    <Style Selector="controls|PlayIcon">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Path Data="M 2,1 L 13,7 L 2,13 Z"
+                      Fill="{TemplateBinding Foreground}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- PauseIcon -->
+    <Style Selector="controls|PauseIcon">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid>
+                    <Path Data="M 2,1 L 5,1 L 5,13 L 2,13 Z"
+                          Fill="{TemplateBinding Foreground}" />
+                    <Path Data="M 9,1 L 12,1 L 12,13 L 9,13 Z"
+                          Fill="{TemplateBinding Foreground}" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- StopIcon -->
+    <Style Selector="controls|StopIcon">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Path Data="M 2,2 L 12,2 L 12,12 L 2,12 Z"
+                      Fill="{TemplateBinding Foreground}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- GoToStartIcon -->
+    <Style Selector="controls|GoToStartIcon">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid>
+                    <Path Data="M 3,1 L 3,13"
+                          Stroke="{TemplateBinding Foreground}"
+                          StrokeThickness="2"
+                          StrokeLineCap="Round" />
+                    <Path Data="M 13,1 L 5,7 L 13,13 Z"
+                          Fill="{TemplateBinding Foreground}" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+</Styles>

@@ -1,10 +1,27 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="ConstellaTTS.Avalonia.App"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             RequestedThemeVariant="Dark">
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerButton.axaml" />
+        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerIcons.axaml" />
+        <Style Selector="Button#MinimizeBtn:pointerover, Button#MaximizeBtn:pointerover">
+            <Setter Property="Background"><SolidColorBrush Color="#2A2A4A" /></Setter>
+        </Style>
+        <Style Selector="Button#CloseBtn:pointerover">
+            <Setter Property="Background"><SolidColorBrush Color="#C42B2B" /></Setter>
+            <Setter Property="Foreground"><SolidColorBrush Color="#FFFFFF" /></Setter>
+        </Style>
     </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://ConstellaTTS.Core/Themes/MainTheme.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
 </Application>
