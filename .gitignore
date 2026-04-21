@@ -9,3 +9,5 @@ riderModule.iml
 .DS_Store
 Thumbs.db
 plugins/
+infra/python/
+cache/

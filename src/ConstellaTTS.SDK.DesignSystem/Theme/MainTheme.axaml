@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════════════════════════════
+         CONSTELLA — MAIN THEME
+         ThemeDictionary yükleyici.
+         Tema değiştirmek için yeni bir
+         ThemeDictionary ekle.
+    ═══════════════════════════════════════ -->
+
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Dark">
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/DarkThemeResources.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Light">
+            <!-- LightThemeResources.axaml buraya eklenecek -->
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+
+</ResourceDictionary>

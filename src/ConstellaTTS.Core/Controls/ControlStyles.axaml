@@ -1,0 +1,23 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:ConstellaTTS.Core.Controls;assembly=ConstellaTTS.Core">
+
+    <!-- Player controls -->
+    <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerIcons.axaml" />
+    <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerButton.axaml" />
+
+    <!-- TrackHeader -->
+    <Style Selector="controls|TrackHeader Border#ColorBar">
+        <Setter Property="Background" Value="{DynamicResource AccentPurple}" />
+    </Style>
+    <Style Selector="controls|TrackHeader TextBlock#TrackNameBlock">
+        <Setter Property="Foreground" Value="{DynamicResource FgPrimary}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="controls|TrackHeader TextBlock#TrackMetaBlock">
+        <Setter Property="Foreground" Value="{DynamicResource FgMuted}" />
+        <Setter Property="FontSize" Value="10" />
+    </Style>
+
+</Styles>

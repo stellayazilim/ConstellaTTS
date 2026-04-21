@@ -1,0 +1,24 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         ConstellaTTS Design System — Entry Point
+         App.axaml'a ekle:
+           <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/DesignSystem.axaml" />
+    ════════════════════════════════════════════════════════════ -->
+
+    <!-- Palette tokens -->
+    <Style>
+        <Style.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.MergedDictionaries>
+                    <ResourceInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/Tokens.axaml" />
+                </ResourceDictionary.MergedDictionaries>
+            </ResourceDictionary>
+        </Style.Resources>
+    </Style>
+
+    <!-- Dark theme: semantic aliases + tüm style'lar -->
+    <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/DarkTheme.axaml" />
+
+</Styles>

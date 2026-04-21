@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/ConstellaTTS.Avalonia/ConstellaTTS.Avalonia.csproj" />
     <Project Path="src/ConstellaTTS.Core/ConstellaTTS.Core.csproj" />
+    <Project Path="src/ConstellaTTS.Domain/ConstellaTTS.Domain.csproj" />
+    <Project Path="src/ConstellaTTS.SDK.DesignSystem/ConstellaTTS.SDK.DesignSystem.csproj" />
+    <Project Path="src/ConstellaTTS.SDK.IPC/ConstellaTTS.SDK.IPC.csproj" />
     <Project Path="src/ConstellaTTS.SDK/ConstellaTTS.SDK.csproj" />
   </Folder>
 </Solution>

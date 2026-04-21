@@ -1,0 +1,57 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+
+
+    <!-- ── BACKGROUNDS ── -->
+    <StaticResource x:Key="BgBase"     ResourceKey="Noir-1"     />
+    <StaticResource x:Key="BgRibbon"   ResourceKey="Noir-2"     />
+    <StaticResource x:Key="BgLogoRow"  ResourceKey="Noir-3"     />
+    <StaticResource x:Key="BgToolbar"  ResourceKey="Coal-1"     />
+    <StaticResource x:Key="BgElevated" ResourceKey="Coal-2"     />
+    <StaticResource x:Key="BgTrack"    ResourceKey="Graphite-1" />
+    <StaticResource x:Key="BgTrackAlt" ResourceKey="Graphite-2" />
+    <StaticResource x:Key="BgSection"  ResourceKey="Graphite-3" />
+
+    <!-- ── BORDERS ── -->
+    <StaticResource x:Key="BorderSubtle" ResourceKey="Slate-1" />
+    <StaticResource x:Key="BorderMid"    ResourceKey="Slate-2" />
+    <StaticResource x:Key="BorderStrong" ResourceKey="Slate-3" />
+
+    <!-- ── FOREGROUND ── -->
+    <StaticResource x:Key="FgPrimary"   ResourceKey="Mist-1" />
+    <StaticResource x:Key="FgSecondary" ResourceKey="Mist-2" />
+    <StaticResource x:Key="FgMuted"     ResourceKey="Mist-3" />
+    <StaticResource x:Key="RulerText"   ResourceKey="Mist-4" />
+    <StaticResource x:Key="RulerBg"     ResourceKey="Noir-2" />
+
+    <!-- ── ACCENTS ── -->
+    <StaticResource x:Key="AccentPurple" ResourceKey="Violet-1"  />
+    <StaticResource x:Key="AccentBlue"   ResourceKey="Blue-1"    />
+    <StaticResource x:Key="AccentCyan"   ResourceKey="Cyan-1"    />
+    <StaticResource x:Key="AccentPink"   ResourceKey="Magenta-1" />
+    <StaticResource x:Key="AccentRose"   ResourceKey="Rose-1"    />
+
+    <!-- ── STATUS ── -->
+    <StaticResource x:Key="StatusSuccess" ResourceKey="Green-1"  />
+    <StaticResource x:Key="StatusWarning" ResourceKey="Yellow-1" />
+    <StaticResource x:Key="StatusDanger"  ResourceKey="Red-1"    />
+
+    <!-- ── GRADIENTS ── -->
+    <StaticResource x:Key="GradientNeon"   ResourceKey="Gradient-Neon"   />
+    <StaticResource x:Key="GradientHero"   ResourceKey="Gradient-Hero"   />
+    <StaticResource x:Key="GradientOcean"  ResourceKey="Gradient-Ocean"  />
+    <StaticResource x:Key="GradientCosmic" ResourceKey="Gradient-Cosmic" />
+
+    <!-- ── FONTS ── -->
+    <FontFamily x:Key="FontBrand">Orbitron,Segoe UI,sans-serif</FontFamily>
+    <FontFamily x:Key="FontUi">DM Sans,Segoe UI,sans-serif</FontFamily>
+    <FontFamily x:Key="FontMono">JetBrains Mono,Cascadia Code,Consolas,monospace</FontFamily>
+
+    <!-- ── GRADIENT TEXT ── -->
+    <LinearGradientBrush x:Key="GradText" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Color="#7c6af7" Offset="0" />
+        <GradientStop Color="#d060ff" Offset="1" />
+    </LinearGradientBrush>
+
+</ResourceDictionary>

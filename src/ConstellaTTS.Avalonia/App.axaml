@@ -3,25 +3,28 @@
              x:Class="ConstellaTTS.Avalonia.App"
              RequestedThemeVariant="Dark">
 
-    <Application.Styles>
-        <FluentTheme />
-        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerButton.axaml" />
-        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerIcons.axaml" />
-        <Style Selector="Button#MinimizeBtn:pointerover, Button#MaximizeBtn:pointerover">
-            <Setter Property="Background"><SolidColorBrush Color="#2A2A4A" /></Setter>
-        </Style>
-        <Style Selector="Button#CloseBtn:pointerover">
-            <Setter Property="Background"><SolidColorBrush Color="#C42B2B" /></Setter>
-            <Setter Property="Foreground"><SolidColorBrush Color="#FFFFFF" /></Setter>
-        </Style>
-    </Application.Styles>
-
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceInclude Source="avares://ConstellaTTS.Core/Themes/MainTheme.axaml" />
+                <ResourceInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/Tokens.axaml" />
+                <ResourceInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/MainTheme.axaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+        <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/DarkTheme.axaml" />
+        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/ControlStyles.axaml" />
+
+        <!-- Window control button overrides -->
+        <Style Selector="Button#MinimizeBtn:pointerover, Button#MaximizeBtn:pointerover">
+            <Setter Property="Background" Value="#2A2A4A" />
+        </Style>
+        <Style Selector="Button#CloseBtn:pointerover">
+            <Setter Property="Background" Value="#C42B2B" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+    </Application.Styles>
 
 </Application>

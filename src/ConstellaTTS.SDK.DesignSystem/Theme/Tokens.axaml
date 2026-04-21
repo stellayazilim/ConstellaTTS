@@ -1,0 +1,89 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════════════════════════════
+         CONSTELLA — PALETTE TOKENS v6
+         Pure palette — no semantic naming
+         Generic, theme-agnostic color atoms
+    ═══════════════════════════════════════ -->
+
+    <!-- NOIR / DEEPEST BACKGROUNDS -->
+    <Color x:Key="Noir-1">#0D0D14</Color>
+    <Color x:Key="Noir-2">#111119</Color>
+    <Color x:Key="Noir-3">#14141E</Color>
+
+    <!-- COAL / UI CHROME -->
+    <Color x:Key="Coal-1">#16161F</Color>
+    <Color x:Key="Coal-2">#1A1A2A</Color>
+
+    <!-- GRAPHITE / TRACK & PANEL DEPTH -->
+    <Color x:Key="Graphite-1">#18182A</Color>
+    <Color x:Key="Graphite-2">#15152A</Color>
+    <Color x:Key="Graphite-3">#1C1C2E</Color>
+
+    <!-- SLATE / BORDERS & STRUCTURE -->
+    <Color x:Key="Slate-1">#252538</Color>
+    <Color x:Key="Slate-2">#32324A</Color>
+    <Color x:Key="Slate-3">#44446A</Color>
+
+    <!-- MIST / FOREGROUND SCALE -->
+    <Color x:Key="Mist-1">#D0D0E8</Color>
+    <Color x:Key="Mist-2">#888899</Color>
+    <Color x:Key="Mist-3">#444455</Color>
+    <Color x:Key="Mist-4">#3A3A55</Color>
+
+    <!-- VIOLET / PRIMARY ACCENT -->
+    <Color x:Key="Violet-1">#7c6af7</Color>
+    <Color x:Key="Violet-2">#9b4dca</Color>
+
+    <!-- BLUE / COOL ACCENT -->
+    <Color x:Key="Blue-1">#60aaff</Color>
+    <Color x:Key="Blue-2">#6090ff</Color>
+
+    <!-- CYAN / BRIGHT ACCENT -->
+    <Color x:Key="Cyan-1">#50e0ff</Color>
+
+    <!-- MAGENTA / HOT ACCENT -->
+    <Color x:Key="Magenta-1">#d060ff</Color>
+
+    <!-- ROSE / WARM ACCENT -->
+    <Color x:Key="Rose-1">#ff60a0</Color>
+
+    <!-- STATUS -->
+    <Color x:Key="Green-1">#4ade80</Color>
+    <Color x:Key="Yellow-1">#fbbf24</Color>
+    <Color x:Key="Red-1">#f87171</Color>
+
+    <!-- GRADIENTS -->
+    <LinearGradientBrush x:Key="Gradient-Neon"
+                         StartPoint="0%,0%"
+                         EndPoint="100%,0%">
+        <GradientStop Color="{StaticResource Violet-1}" Offset="0" />
+        <GradientStop Color="{StaticResource Magenta-1}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Gradient-Hero"
+                         StartPoint="0%,0%"
+                         EndPoint="100%,0%">
+        <GradientStop Color="{StaticResource Blue-1}"    Offset="0"   />
+        <GradientStop Color="{StaticResource Violet-1}"  Offset="0.4" />
+        <GradientStop Color="{StaticResource Magenta-1}" Offset="0.7" />
+        <GradientStop Color="{StaticResource Rose-1}"    Offset="1"   />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Gradient-Ocean"
+                         StartPoint="0%,0%"
+                         EndPoint="0%,100%">
+        <GradientStop Color="{StaticResource Cyan-1}" Offset="0" />
+        <GradientStop Color="{StaticResource Blue-2}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Gradient-Cosmic"
+                         StartPoint="0%,0%"
+                         EndPoint="100%,100%">
+        <GradientStop Color="{StaticResource Blue-1}"   Offset="0"   />
+        <GradientStop Color="{StaticResource Violet-1}" Offset="0.5" />
+        <GradientStop Color="{StaticResource Violet-2}" Offset="1"   />
+    </LinearGradientBrush>
+
+</ResourceDictionary>

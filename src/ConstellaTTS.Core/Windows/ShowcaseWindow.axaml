@@ -1,0 +1,373 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:ConstellaTTS.Core.Controls"
+        x:Class="ConstellaTTS.Core.Windows.ShowcaseWindow"
+        Title="ConstellaTTS — Component Showcase"
+        Width="1100" Height="760"
+        MinWidth="900" MinHeight="600"
+        Background="{StaticResource BgVoid}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="0">
+
+            <!-- ── HEADER ── -->
+            <Border Background="{StaticResource BgRibbon}"
+                    BorderBrush="{StaticResource BorderSubtle}"
+                    BorderThickness="0,0,0,1"
+                    Padding="32,20">
+                <StackPanel Spacing="4">
+                    <TextBlock FontSize="11"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               LetterSpacing="3"
+                               Text="CONSTELLA TTS" />
+                    <TextBlock FontSize="22"
+                               FontFamily="{StaticResource FontBrand}"
+                               FontWeight="Bold">
+                        <TextBlock.Foreground>
+                            <StaticResource ResourceKey="GradText" />
+                        </TextBlock.Foreground>
+                        Component Library
+                    </TextBlock>
+                    <TextBlock FontSize="11"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="Atoms · Molecules · Organisms" />
+                </StackPanel>
+            </Border>
+
+            <StackPanel Spacing="48" Margin="32,32,32,48">
+
+                <!-- ══════════════════════════════════════════════
+                     ATOMS
+                ═══════════════════════════════════════════════ -->
+
+                <!-- Section header -->
+                <StackPanel Spacing="2">
+                    <TextBlock FontSize="9"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               LetterSpacing="4"
+                               Text="ATOMS" />
+                    <Border Classes="divider gradient" />
+                </StackPanel>
+
+                <!-- Buttons -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsButton — variants" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="ctts primary">Primary</Button>
+                        <Button Classes="ctts gradient">Gradient</Button>
+                        <Button Classes="ctts outline">Outline</Button>
+                        <Button Classes="ctts ghost">Ghost</Button>
+                        <Button Classes="ctts danger">Danger</Button>
+                    </StackPanel>
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Margin="0,4,0,0"
+                               Text="CttsButton — sizes" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Classes="ctts primary sm">Small</Button>
+                        <Button Classes="ctts primary">Medium</Button>
+                        <Button Classes="ctts primary lg">Large</Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Badges -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsBadge — variants" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Classes="badge violet"><TextBlock Text="violet" /></Border>
+                        <Border Classes="badge blue"><TextBlock Text="blue" /></Border>
+                        <Border Classes="badge pink"><TextBlock Text="pink" /></Border>
+                        <Border Classes="badge green"><TextBlock Text="active" /></Border>
+                        <Border Classes="badge yellow"><TextBlock Text="generating" /></Border>
+                        <Border Classes="badge red"><TextBlock Text="error" /></Border>
+                        <Border Classes="badge cyan"><TextBlock Text="lokal" /></Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Status Dots -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsStatusDot — variants" />
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="status-dot green" />
+                            <TextBlock FontSize="11" Foreground="{StaticResource FgSecondary}" Text="Engine aktif" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="status-dot yellow" />
+                            <TextBlock FontSize="11" Foreground="{StaticResource FgSecondary}" Text="Generating" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="status-dot red" />
+                            <TextBlock FontSize="11" Foreground="{StaticResource FgSecondary}" Text="Hata" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="status-dot blue" />
+                            <TextBlock FontSize="11" Foreground="{StaticResource FgSecondary}" Text="Lokal model" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Input -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsInput — variants" />
+                    <Grid ColumnDefinitions="240,16,240" RowDefinitions="Auto,12,Auto">
+                        <TextBox Grid.Column="0" Grid.Row="0"
+                                 Classes="ctts"
+                                 Watermark="Default input..." />
+                        <TextBox Grid.Column="2" Grid.Row="0"
+                                 Classes="ctts mono"
+                                 Watermark="00:00.0" />
+                        <TextBox Grid.Column="0" Grid.Row="2"
+                                 Classes="ctts"
+                                 Text="With value" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- Dividers -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsDivider — variants" />
+                    <Border Classes="divider" />
+                    <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource FgMuted}" Text="dim" />
+                    <Border Classes="divider gradient" />
+                    <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource FgMuted}" Text="gradient (violet center)" />
+                </StackPanel>
+
+                <!-- PlayerButton -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsPlayerButton (existing)" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <controls:PlayerButton Foreground="{StaticResource AccentViolet}" ToolTip.Tip="Go to Start">
+                            <controls:GoToStartIcon />
+                        </controls:PlayerButton>
+                        <controls:PlayerButton Foreground="{StaticResource AccentBlue}" ToolTip.Tip="Play">
+                            <controls:PlayIcon />
+                        </controls:PlayerButton>
+                        <controls:PlayerButton Foreground="{StaticResource AccentPinkNeon}" ToolTip.Tip="Stop">
+                            <controls:StopIcon />
+                        </controls:PlayerButton>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ══════════════════════════════════════════════
+                     MOLECULES
+                ═══════════════════════════════════════════════ -->
+
+                <StackPanel Spacing="2">
+                    <TextBlock FontSize="9"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               LetterSpacing="4"
+                               Text="MOLECULES" />
+                    <Border Classes="divider gradient" />
+                </StackPanel>
+
+                <!-- Timecode -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsTimecode" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Classes="timecode"><TextBlock Text="00:00.0" /></Border>
+                        <Border Classes="timecode"><TextBlock Text="01:24.7" /></Border>
+                        <Border Classes="timecode"><TextBlock Text="12:00.0" /></Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Mode Buttons -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsModeButton — toolbar toggle" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Button Classes="mode-btn active">Create</Button>
+                        <Button Classes="mode-btn">Select</Button>
+                        <Button Classes="mode-btn">Stage</Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Section Items -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsSectionItem — sol panel" />
+                    <Border Width="200"
+                            HorizontalAlignment="Left"
+                            Background="{StaticResource BgRaised}"
+                            BorderBrush="{StaticResource BorderSubtle}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusMd}"
+                            ClipToBounds="True">
+                        <StackPanel>
+                            <Button Classes="section-item active">
+                                <Grid ColumnDefinitions="4,*">
+                                    <Border Grid.Column="0" Background="{StaticResource AccentViolet}" />
+                                    <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgPrimary}" Text="Giriş" />
+                                        <TextBlock FontSize="10" Foreground="{StaticResource FgMuted}" Text="2 track · 0:32" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                            <Button Classes="section-item">
+                                <Grid ColumnDefinitions="4,*">
+                                    <Border Grid.Column="0" Background="{StaticResource AccentBlue}" />
+                                    <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgPrimary}" Text="Bölüm I" />
+                                        <TextBlock FontSize="10" Foreground="{StaticResource FgMuted}" Text="3 track · 1:15" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                            <Button Classes="section-item">
+                                <Grid ColumnDefinitions="4,*">
+                                    <Border Grid.Column="0" Background="{StaticResource AccentPinkNeon}" />
+                                    <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock FontSize="12" FontWeight="Medium" Foreground="{StaticResource FgPrimary}" Text="Bölüm II" />
+                                        <TextBlock FontSize="10" Foreground="{StaticResource FgMuted}" Text="2 track · 0:58" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ══════════════════════════════════════════════
+                     ORGANISMS
+                ═══════════════════════════════════════════════ -->
+
+                <StackPanel Spacing="2">
+                    <TextBlock FontSize="9"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               LetterSpacing="4"
+                               Text="ORGANISMS" />
+                    <Border Classes="divider gradient" />
+                </StackPanel>
+
+                <!-- Toolbar -->
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="10"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               Text="CttsToolbar — transport + timecode + modes" />
+                    <Border Classes="toolbar-strip">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0">
+                                <controls:PlayerButton Foreground="{StaticResource AccentViolet}">
+                                    <controls:GoToStartIcon />
+                                </controls:PlayerButton>
+                                <controls:PlayerButton Foreground="{StaticResource AccentBlue}">
+                                    <controls:PlayIcon />
+                                </controls:PlayerButton>
+                                <controls:PlayerButton Foreground="{StaticResource AccentPinkNeon}">
+                                    <controls:StopIcon />
+                                </controls:PlayerButton>
+                            </StackPanel>
+                            <Border Classes="toolbar-divider" />
+                            <Border Classes="timecode" Margin="8,0">
+                                <TextBlock Text="00:00.0" />
+                            </Border>
+                            <Border Classes="toolbar-divider" />
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0">
+                                <Button Classes="mode-btn active">Create</Button>
+                                <Button Classes="mode-btn">Select</Button>
+                                <Button Classes="mode-btn">Stage</Button>
+                            </StackPanel>
+                            <Border Classes="toolbar-divider" />
+                            <TextBlock Classes="toolbar-label" Margin="8,0,4,0" Text="Engine:" />
+                            <TextBlock FontSize="11" FontWeight="Medium"
+                                       Foreground="{StaticResource FgPrimary}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Text="Chatterbox ML" />
+                            <Border Classes="badge cyan" VerticalAlignment="Center">
+                                <TextBlock Text="lokal" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ══════════════════════════════════════════════
+                     TOKENS
+                ═══════════════════════════════════════════════ -->
+
+                <StackPanel Spacing="2">
+                    <TextBlock FontSize="9"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}"
+                               LetterSpacing="4"
+                               Text="COLOR TOKENS" />
+                    <Border Classes="divider gradient" />
+                </StackPanel>
+
+                <WrapPanel Orientation="Horizontal">
+                    <WrapPanel.Styles>
+                        <Style Selector="Border.token-swatch">
+                            <Setter Property="Width" Value="100" />
+                            <Setter Property="Height" Value="60" />
+                            <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+                            <Setter Property="Margin" Value="0,0,8,8" />
+                        </Style>
+                    </WrapPanel.Styles>
+                    <Border Classes="token-swatch" Background="{StaticResource BgVoid}" BorderBrush="{StaticResource BorderDim}" BorderThickness="1">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource FgMuted}" Margin="8,4" Text="BgVoid" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource BgBase}" BorderBrush="{StaticResource BorderDim}" BorderThickness="1">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource FgMuted}" Margin="8,4" Text="BgBase" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource BgRaised}" BorderBrush="{StaticResource BorderDim}" BorderThickness="1">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource FgMuted}" Margin="8,4" Text="BgRaised" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource BgMuted}" BorderBrush="{StaticResource BorderDim}" BorderThickness="1">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource FgMuted}" Margin="8,4" Text="BgMuted" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource AccentViolet}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="White" Margin="8,4" Text="AccentViolet" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource AccentBlue}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="White" Margin="8,4" Text="AccentBlue" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource AccentPinkNeon}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="White" Margin="8,4" Text="AccentPinkNeon" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource AccentBlueNeon}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="White" Margin="8,4" Text="AccentBlueNeon" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource SemanticSuccess}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="Black" Margin="8,4" Text="Success" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource SemanticWarning}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="Black" Margin="8,4" Text="Warning" VerticalAlignment="Bottom" />
+                    </Border>
+                    <Border Classes="token-swatch" Background="{StaticResource SemanticDanger}">
+                        <TextBlock FontSize="9" FontFamily="{StaticResource FontMono}" Foreground="White" Margin="8,4" Text="Danger" VerticalAlignment="Bottom" />
+                    </Border>
+                </WrapPanel>
+
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+
+</Window>

@@ -7,18 +7,30 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="12.0.1" />
+        <PackageReference Include="Avalonia.BuildServices" Version="11.3.2">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
         <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.3" />
         <PackageReference Include="Svg.Skia" Version="4.3.0" />
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\ConstellaTTS.SDK.DesignSystem\ConstellaTTS.SDK.DesignSystem.csproj" />
+        <ProjectReference Include="..\ConstellaTTS.SDK.IPC\ConstellaTTS.SDK.IPC.csproj" />
         <ProjectReference Include="..\ConstellaTTS.SDK\ConstellaTTS.SDK.csproj" />
+        <ProjectReference Include="..\ConstellaTTS.Domain\ConstellaTTS.Domain.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <AvaloniaResource Include="Assets\**"  />
+        <AvaloniaResource Include="Assets\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Update="Controls\TrackHeader.axaml.cs">
+        <DependentUpon>TrackHeader.axaml</DependentUpon>
+      </Compile>
     </ItemGroup>
 
 </Project>

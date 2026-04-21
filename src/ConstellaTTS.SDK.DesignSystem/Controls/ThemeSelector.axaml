@@ -1,0 +1,11 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ConstellaTTS.SDK.DesignSystem.Controls.ThemeSelector">
+
+    <ComboBox x:Name="ThemeCombo"
+              MinWidth="100">
+        <ComboBoxItem Content="Dark"   Tag="Dark" />
+        <ComboBoxItem Content="Light"  Tag="Light" />
+        <ComboBoxItem Content="System" Tag="System" />
+    </ComboBox>
+</UserControl>
