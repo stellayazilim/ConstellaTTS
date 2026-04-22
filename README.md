@@ -75,24 +75,44 @@ Plugins are discovered from `./plugins/` — DLLs scanned, `IConstellaModule` im
 
 ### IPC Daemon
 
+Daemon is an embedded Python 3.11 subprocess the host launches on demand.
+All traffic between C# and Python goes through Windows named pipes
+(Unix domain sockets on Linux), framed as length-prefixed MessagePack:
+`[4-byte LE uint32 length][payload]`.
+
 ```
 Avalonia (C#)
-    ↕  stdin/stdout — MessagePack frames [4-byte LE length][msgpack bytes]
+    ↕  control pipe   — request/response, correlated by id
+    ↕  job pipes       — one per streaming generation, unidirectional
 Python daemon (single process, embedded Python 3.11)
     ↕
-TTS models — lazy load, LRU eviction
+TTS models / route modules
 ```
 
-**Threading model:**
-```
-Dedicated Thread (IPC.PipeReader)   — blocking pipe read, never touches thread pool
-    ↓  Channel<IPCMessage>          — lock-free handoff
-Async Dispatch Loop                 — routes tts.chunk → SoundService
-    ↓
-SoundService + BufferStreamer       — per-job PCM accumulator, temp .raw file
-    ↓  FileShare.ReadWrite
-BufferReadStream (players)          — IAsyncEnumerable<byte[]>, seek by byte or seconds
-```
+**Routing.** Each module under `daemon/modules/` exports a module-level
+`Route` object. Registry auto-discovers them — single-file routes like
+`modules/echo.route.py` and folder-based models like
+`modules/models/chatterbox_ml/router.py` share the same convention.
+Action names map directly to wire strings: `fake.generate`, `health.check`.
+
+**Streaming.** `generate` returns `{"job_id", "stream_pipe"}`; the C# side
+opens the `stream_pipe` and receives `{"type": "chunk", "data": ...}`
+frames until a terminal `done` / `error` / `cancelled` event. A
+bounded-capacity queue on the daemon side provides backpressure: slow
+consumers push back on the producer, avoiding unbounded memory use
+(and incidentally keeping VRAM pressure in check under slow clients).
+
+**Job admin.** Each `BaseTTSModel` subclass gets `cancel(job_id)` and
+`list_jobs()` actions for free — no extra plumbing in the router.
+
+**Transport.** Windows uses `ProactorEventLoop.start_serving_pipe`
+(IOCP-backed, true overlapped I/O) so concurrent reads and writes on
+the same pipe handle don't deadlock the way a thread-bridged sync-mode
+pipe would. The control pipe path is deterministic —
+`\\.\pipe\constella_<pid>_control` — so the host finds the daemon
+simply by deriving the path from the spawned process's PID. No stdout
+or stderr sideband is required for discovery; the named pipe namespace
+itself is the rendezvous.
 
 ### Audio Streaming Pipeline
 
@@ -138,6 +158,36 @@ dotnet run --project src/ConstellaTTS.Avalonia
 
 Place plugin DLLs in `./plugins/` next to the executable.
 
+### Verifying the IPC layer
+
+A Python-only smoke test exercises the daemon's request/response,
+streaming, cancel, and `list_jobs` paths without any C# involvement:
+
+```bash
+cd src/ConstellaTTS.Daemon
+..\..\infra\python\python.exe test_client.py
+```
+
+The C#-side equivalent drives the daemon through the SDK client
+(`IPCClient`) and also covers concurrent correlation and the
+`IPCStream` streaming API. Build the SDK first, then run the script:
+
+```bash
+dotnet build src/ConstellaTTS.SDK.IPC/ConstellaTTS.SDK.IPC.csproj
+dotnet script infra/test_ipc.csx
+```
+
+Both scripts spawn their own daemon, run the assertions, and shut it
+down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
+
+> **If the C# script hangs or reports stale errors after a rebuild**,
+> `dotnet-script` is serving a cached copy of the SDK DLL. Clear it:
+>
+> ```powershell
+> Remove-Item -Recurse -Force $env:LOCALAPPDATA\dotnet-script -ErrorAction SilentlyContinue
+> Remove-Item -Recurse -Force $env:TEMP\dotnet-script -ErrorAction SilentlyContinue
+> ```
+
 ---
 
 ## Writing a Plugin
@@ -155,9 +205,10 @@ Place plugin DLLs in `./plugins/` next to the executable.
 
 | Phase | Focus |
 |-------|-------|
+| **Done** | IPC daemon — named-pipe transport, routing, streaming with backpressure, cancel |
 | **Now** | Domain model (Section, Track, Project), `.wwv` file format |
-| **Next** | Timeline UI, section views, emotion color system |
-| **Soon** | Python daemon integration, first adapter (Chatterbox), audio playback |
+| **Next** | First real TTS adapter (Chatterbox), waveform extraction, audio playback wiring |
+| **Soon** | Timeline UI, section views, emotion color system |
 | **Later** | Plugin manifest system, adapter generator, drag & drop model install |
 | **Future** | Duration control (Rubberband, ScalerGAN, IndexTTS-2), export pipeline |
 
@@ -218,15 +269,28 @@ Place plugin DLLs in `./plugins/` next to the executable.
 - [x] `IPCException` hierarchy — `DaemonNotRespondingException`, `DaemonStartFailedException`, `IPCTimeoutException`
 
 ### ✅ IPC Daemon
-- [x] `IIPCService` + `IPCMessage` — MessagePack protocol contract (`SDK.IPC`)
-- [x] `IPCService` — dedicated pipe reader thread + `Channel<IPCMessage>` dispatch loop
-- [x] Watchdog — fires `DaemonNotRespondingException` via `IExceptionHandler` on chunk timeout
-- [x] Two subscription styles — event-style (`MessageReceived +=`) and method-style (`On("event", ...)`)
-- [x] Request/response correlation — `SendAsync` with timeout returns matched response
-- [x] Single-instance daemon — lock file prevents duplicate processes
-- [x] Embedded Python 3.11 — `infra/setup.csx` downloads and configures
-- [x] `infra/setup.csx` — idempotent dev environment setup
-- [x] `infra/teardown.csx` — cleanup script
+- [x] `IIPCService` + MessagePack message records (`SDK.IPC`)
+- [x] `IPCClient` — request/response correlation, background read loop
+- [x] Length-prefixed MessagePack framing, 16 MiB frame cap
+- [x] Windows named pipes via `ProactorEventLoop.start_serving_pipe` (IOCP)
+- [x] Unix domain socket transport (`_unix_socket.py`) scaffolded for Linux
+- [x] Convention-based route discovery — `*.route.py` + `models/*/router.py`
+- [x] `BaseTTSModel` — lazy load, VRAM semaphore, `inspect`/`load`/`unload` actions
+- [x] `StreamChannel` — per-job pipe, bounded-capacity backpressure
+- [x] Job admin actions — `cancel(job_id)`, `list_jobs()`
+- [x] `IPCStream` C# API — `StartStreamAsync` + `ReadEventsAsync` + `CancelAsync`
+- [x] `model.json` metadata auto-loaded, exposed via `inspect`
+- [x] Daemon logging to rotating files (`logs/daemon_<pid>_<ts>.log`)
+- [x] Single-instance lock, graceful shutdown on stdin EOF + SIGINT/SIGTERM
+- [x] Embedded Python 3.11 — `infra/setup.csx` / `infra/teardown.csx`
+- [x] End-to-end smoke tests — `test_client.py` (Python) + `infra/test_ipc.csx` (C#)
+
+### 🔲 IPC Daemon — later
+- [ ] Watchdog on streaming jobs (fire `DaemonNotRespondingException` on stalled chunk)
+- [ ] VRAM-aware LRU eviction across registered models
+- [ ] Dynamic backpressure tuning (`set_capacity` admin action)
+- [ ] Source-generated typed client — `await client.Fake.GenerateAsync(...)`
+- [ ] `ILogger<IPCClient>` integration — promote ad-hoc `[ipc]` lines to proper `LogLevel.Debug`, let hosts filter via the usual logging config
 
 ### ✅ Audio Streaming Pipeline
 - [x] `BufferWriteStream` — single writer, appends PCM chunks to temp `.raw` file
@@ -248,10 +312,9 @@ Place plugin DLLs in `./plugins/` next to the executable.
 - [ ] Dirty indicator (yellow left border) + WER warning icon
 
 ### 🔲 Python TTS Daemon
-- [ ] `WwvAdapter` ABC — `load / unload / generate / capabilities / vram_usage_bytes`
-- [ ] LRU model cache — lazy load, evict on VRAM pressure
+- [ ] First real adapter: Chatterbox Multilingual
 - [ ] Waveform extraction — peak sampling, float array, returned alongside wav path
-- [ ] First adapter: Chatterbox Multilingual
+- [ ] Real-time PCM chunk emission (vs. the current char-per-chunk fake)
 
 ### 🔲 Plugin System
 - [ ] `plugin.json` manifest schema

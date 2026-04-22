@@ -4,11 +4,17 @@
 //
 // Removes the infra/python/ directory. Daemon scripts are preserved.
 
-var pythonDir = Path.Combine(AppContext.BaseDirectory, "python");
+using System.Runtime.CompilerServices;
+
+static string GetScriptPath([CallerFilePath] string path = "") => path;
+
+var scriptPath = GetScriptPath();
+var infraDir   = Path.GetDirectoryName(Path.GetFullPath(scriptPath))!;
+var pythonDir  = Path.Combine(infraDir, "python");
 
 if (!Directory.Exists(pythonDir))
 {
-    Console.WriteLine("[teardown] infra/python/ not found — nothing to do.");
+    Console.WriteLine($"[teardown] {pythonDir} not found — nothing to do.");
 }
 else
 {

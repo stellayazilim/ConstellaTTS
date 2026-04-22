@@ -1,52 +1,73 @@
 namespace ConstellaTTS.SDK.IPC;
 
 /// <summary>
-/// Manages the Python daemon process and provides send/subscribe primitives.
+/// High-level client for the ConstellaTTS Python daemon.
 ///
-/// Two subscription styles:
-///   Event-style:  ipc.MessageReceived += async msg => { ... }
-///   Method-style: ipc.On("ping",       async msg => { ... })
+/// Handles daemon lifecycle (spawn/shutdown) and request/response
+/// correlation over the control pipe. Job-streaming subscription will be
+/// added in a later iteration.
 /// </summary>
-public interface IIPCService
+public interface IIPCService : IAsyncDisposable
 {
-    /// <summary>True when the daemon process is running and the pipe is open.</summary>
+    /// <summary>True once the daemon has announced its endpoint and the control pipe is connected.</summary>
     bool IsConnected { get; }
 
-    // Lifecycle
+    // ── Lifecycle ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Starts the daemon if it is not already running.
-    /// Safe to call multiple times — no-op if already connected.
+    /// Start the daemon process (if not already running) and connect to its
+    /// control pipe. Safe to call multiple times — becomes a no-op once
+    /// connected.
     /// </summary>
     Task StartAsync(CancellationToken ct = default);
 
-    /// <summary>Gracefully shuts down the daemon process.</summary>
-    Task StopAsync();
+    /// <summary>Gracefully shut the daemon down and close the pipe.</summary>
+    Task StopAsync(CancellationToken ct = default);
 
-    // Send
-
-    /// <summary>Sends an event to the daemon. Fire and forget.</summary>
-    Task SendAsync(string @event, object? data = null);
-
-    /// <summary>Sends an event and waits for a response with the same message ID.</summary>
-    Task<IPCMessage> SendAsync(string @event, object? data, TimeSpan timeout);
-
-    // Subscribe — event style
+    // ── Request/response ────────────────────────────────────────────────────
 
     /// <summary>
-    /// Raised for every message received from the daemon.
-    /// Use for broad or global subscriptions.
+    /// Send a request over the control pipe and await the matching response.
     /// </summary>
-    event Func<IPCMessage, Task> MessageReceived;
+    /// <param name="route">Dotted route, e.g. <c>"echo.ping"</c>.</param>
+    /// <param name="data">Optional payload. Pass an anonymous object or dict.</param>
+    /// <param name="timeout">Max time to wait for a response. Defaults to 30s.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The response envelope — inspect <c>Ok</c> before reading <c>Data</c>.</returns>
+    /// <exception cref="TimeoutException">Response did not arrive within <paramref name="timeout"/>.</exception>
+    /// <exception cref="InvalidOperationException">Client is not connected.</exception>
+    Task<IPCResponse> RequestAsync(
+        string route,
+        object? data = null,
+        TimeSpan? timeout = null,
+        CancellationToken ct = default);
 
-    // Subscribe — method style
+    // ── Streaming ─────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Subscribes a handler to a specific event name.
-    /// Pass "*" to receive all events regardless of name.
+    /// Start a streaming job and subscribe to its per-job pipe.
+    ///
+    /// Calls <paramref name="startRoute"/> (typically <c>"{model}.generate"</c>)
+    /// with <paramref name="data"/>, reads <c>stream_pipe</c> and
+    /// <c>job_id</c> from the response, then opens the stream pipe and
+    /// returns an <see cref="IPCStream"/> you can iterate.
     /// </summary>
-    void On(string @event, Func<IPCMessage, Task> handler);
-
-    /// <summary>Removes a previously registered method-style handler.</summary>
-    void Off(string @event, Func<IPCMessage, Task> handler);
+    /// <param name="startRoute">
+    /// The <c>generate</c>-style route to call. Must return a response
+    /// with <c>job_id</c> and <c>stream_pipe</c> in its <c>data</c>.
+    /// </param>
+    /// <param name="data">Optional payload forwarded to the route.</param>
+    /// <param name="startTimeout">Max time to wait for the start response.</param>
+    /// <param name="ct">Cancellation token for the start request.</param>
+    /// <returns>An open <see cref="IPCStream"/>. Dispose it when you're done.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Client is not connected, or the start route returned a malformed
+    /// response (missing <c>job_id</c> / <c>stream_pipe</c>), or the
+    /// handler itself failed.
+    /// </exception>
+    Task<IPCStream> StartStreamAsync(
+        string startRoute,
+        object? data = null,
+        TimeSpan? startTimeout = null,
+        CancellationToken ct = default);
 }

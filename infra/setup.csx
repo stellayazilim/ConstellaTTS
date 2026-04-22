@@ -8,15 +8,29 @@
 
 using System.IO.Compression;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 
-var infraDir  = Path.GetFullPath(AppContext.BaseDirectory);
-var root      = Path.GetFullPath(Path.Combine(infraDir, ".."));
-var pythonDir = Path.Combine(infraDir, "python");
-var daemonDir = Path.Combine(root, "daemon");
-var pythonExe = Path.Combine(pythonDir, "python.exe");
-var pipScript = Path.Combine(pythonDir, "get-pip.py");
-var pipExe    = Path.Combine(pythonDir, "Scripts", "pip.exe");
-var reqFile   = Path.Combine(daemonDir, "requirements.txt");
+// ── Resolve real script location ──────────────────────────────────────────────
+// AppContext.BaseDirectory under `dotnet script` points to the dotnet-script
+// tool directory (e.g. C:\Users\<user>\.nuget\packages\dotnet-script\...), NOT
+// this script's directory. Use [CallerFilePath] to get where *this file* is.
+
+static string GetScriptPath([CallerFilePath] string path = "") => path;
+
+var scriptPath = GetScriptPath();
+var infraDir   = Path.GetDirectoryName(Path.GetFullPath(scriptPath))!;
+var root       = Path.GetFullPath(Path.Combine(infraDir, ".."));
+var pythonDir  = Path.Combine(infraDir, "python");
+var daemonDir  = Path.Combine(root, "src", "ConstellaTTS.Daemon");
+var pythonExe  = Path.Combine(pythonDir, "python.exe");
+var pipScript  = Path.Combine(pythonDir, "get-pip.py");
+var pipExe     = Path.Combine(pythonDir, "Scripts", "pip.exe");
+var reqFile    = Path.Combine(daemonDir, "requirements.txt");
+
+Console.WriteLine($"[setup] Script:  {scriptPath}");
+Console.WriteLine($"[setup] Root:    {root}");
+Console.WriteLine($"[setup] Python:  {pythonDir}");
+Console.WriteLine($"[setup] Daemon:  {daemonDir}");
 
 const string PythonVersion = "3.11.9";
 const string PythonZipUrl  =
@@ -91,8 +105,12 @@ if (File.Exists(reqFile))
     else
         Console.WriteLine("[setup] Requirements ready.");
 }
+else
+{
+    Console.Error.WriteLine($"[setup] Missing requirements file: {reqFile}");
+}
 
-Console.WriteLine("[setup] Done. Python lives in infra/python/");
+Console.WriteLine("[setup] Done. Python lives in " + pythonDir);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

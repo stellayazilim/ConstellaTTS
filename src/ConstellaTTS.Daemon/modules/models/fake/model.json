@@ -1,0 +1,10 @@
+{
+  "name": "fake",
+  "display_name": "Fake TTS",
+  "description": "Development-only model. Emits one character per chunk so the streaming pipeline can be tested without any real ML work.",
+  "version": "0.1.0",
+  "supported_languages": ["*"],
+  "required_vram_mb": 0,
+  "max_concurrent": 4,
+  "tags": ["dev", "streaming"]
+}

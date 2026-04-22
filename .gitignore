@@ -11,3 +11,12 @@ Thumbs.db
 plugins/
 infra/python/
 cache/
+
+# Daemon (Python)
+src/ConstellaTTS.Daemon/.daemon.lock
+src/ConstellaTTS.Daemon/.venv/
+src/ConstellaTTS.Daemon/__pycache__/
+src/ConstellaTTS.Daemon/**/__pycache__/
+src/ConstellaTTS.Daemon/*.egg-info/
+src/ConstellaTTS.Daemon/.pytest_cache/
+src/ConstellaTTS.Daemon/logs/
