@@ -1,14 +1,17 @@
 using System.Reflection;
 using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Markup.Xaml.Styling;
+using ConstellaTTS.Core.Actions;
 using ConstellaTTS.Core.Exceptions;
 using ConstellaTTS.Core.History;
-using ConstellaTTS.Core.IPC;
+using ConstellaTTS.Core.Infrastructure;
 using ConstellaTTS.Core.Layout;
+using ConstellaTTS.Core.Logging;
 using ConstellaTTS.Core.Sound;
 using ConstellaTTS.Core.Theme;
 using ConstellaTTS.Core.UI.Infrastructure;
+using ConstellaTTS.Core.UI.Regions;
+using ConstellaTTS.Core.ViewModels;
 using ConstellaTTS.Core.Views;
 using ConstellaTTS.Core.Windows;
 using ConstellaTTS.SDK.App;
@@ -16,10 +19,11 @@ using ConstellaTTS.SDK.Exceptions;
 using ConstellaTTS.SDK.History;
 using ConstellaTTS.SDK.IPC;
 using ConstellaTTS.SDK.Theme;
+using ConstellaTTS.SDK.UI.Keybinds;
 using ConstellaTTS.SDK.UI.Navigation;
-using ConstellaTTS.SDK.UI.Slots;
-using ConstellaTTS.SDK.UI.Windowing;
+using ConstellaTTS.SDK.UI.Regions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace ConstellaTTS.Core.App;
 
@@ -32,113 +36,123 @@ public sealed class ConstellaTTSCoreModule : IConstellaModule
 
     public void Build(IServiceCollection services)
     {
-        // Window factory
-        services.AddSingleton<IWindowFactory>(sp =>
-        {
-            var factory = new AvaloniaWindowFactory(
-                sp,
-                sp.GetRequiredService<ISlotService>());
-            factory.SetDefaultWindow(typeof(MainWindow));
-            return factory;
-        });
+        services.AddConstellaLogging();
 
-        // Window manager
-        services.AddSingleton<WindowManager>(sp =>
-        {
-            var manager = new WindowManager(sp.GetRequiredService<IWindowFactory>());
-            manager.RegisterWindow(typeof(MainWindow));
+        // ── Lazy registrations ────────────────────────────────────────────
+        services.AddSingleton<Lazy<IConstellaApp>>(sp =>
+            new Lazy<IConstellaApp>(() => sp.GetRequiredService<IConstellaApp>()));
+        services.AddSingleton<Lazy<MainWindow>>(sp =>
+            new Lazy<MainWindow>(() => sp.GetRequiredService<MainWindow>()));
 
-            manager.DeferMount(window =>
-            {
-                if (window.FindControl<ContentControl>("LayoutSlot") is { } slot)
-                    slot.Content = sp.GetRequiredService<MainLayout>();
-            });
+        // ── Core services ─────────────────────────────────────────────────
+        services.AddSingleton<IHistoryManager,    HistoryManager>();
+        services.AddSingleton<IRegionManager,     RegionManager>();
+        services.AddSingleton<IKeybindManager,    KeybindManager>();
+        services.AddSingleton<INavigationManager, NavigationManager>();
+        services.AddSingleton<IExceptionHandler,  ExceptionHandler>();
+        services.AddSingleton<ExceptionHandler>();
 
-            return manager;
-        });
-        services.AddSingleton<IWindowManager>(sp => sp.GetRequiredService<WindowManager>());
-
-        // Theme provider
         services.AddSingleton<IThemeProvider>(_ =>
         {
             var provider = new ThemeProvider(Application.Current!);
-
-            provider.RegisterGlobal(new StyleInclude(
-                new Uri("avares://ConstellaTTS.Core/"))
+            provider.RegisterGlobal(new StyleInclude(new Uri("avares://ConstellaTTS.Core/"))
             {
                 Source = new Uri("avares://ConstellaTTS.Core/Controls/ControlStyles.axaml")
             });
-
             return provider;
         });
 
-        // Exception handler — UI subscribes to ExceptionHandler.ExceptionHandled
-        services.AddSingleton<ExceptionHandler>();
-        services.AddSingleton<IExceptionHandler>(sp =>
-            sp.GetRequiredService<ExceptionHandler>());
-
-        // Sound service
         services.AddSingleton<ISoundService>(_ =>
         {
-            var baseDir   = AppContext.BaseDirectory;
-            var tempDir   = Path.Combine(baseDir, "cache", "pcm");
-            var outputDir = Path.Combine(baseDir, "cache", "opus");
-            return new SoundService(tempDir, outputDir);
+            var baseDir = AppContext.BaseDirectory;
+            return new SoundService(
+                Path.Combine(baseDir, "cache", "pcm"),
+                Path.Combine(baseDir, "cache", "opus"));
         });
 
-        // IPC
-        // Dev:  infra/python/python.exe  (setup by infra/setup.csx)
-        // Dist: python/python.exe        (installed by the app installer)
         services.AddSingleton<IIPCService>(sp =>
         {
-            var baseDir = AppContext.BaseDirectory;
-            var python  = ResolvePythonExe(baseDir);
-            var daemon  = Path.Combine(baseDir, "daemon", "main.py");
-            return new IPCService(
-                python, daemon,
-                sp.GetRequiredService<ISoundService>(),
-                sp.GetRequiredService<IExceptionHandler>());
+            var baseDir       = AppContext.BaseDirectory;
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+            var log           = loggerFactory.CreateLogger(LogCategory.WindowProcess);
+            var python        = ResolvePythonExe(baseDir);
+            var daemon        = ResolveDaemonScript(baseDir);
+            log.LogInformation("IPC: python={Python}", python);
+            log.LogInformation("IPC: daemon={Daemon}", daemon);
+            return new IPCClient(python, daemon, loggerFactory);
         });
 
-        // Core services
-        services.AddSingleton<IHistoryManager, HistoryManager>();
-        services.AddSingleton<ISlotService>(_ =>
+        // ── Managers ──────────────────────────────────────────────────────
+        services.AddSingleton<ProjectManager>();
+
+        // ── ViewModels ────────────────────────────────────────────────────
+        services.AddSingleton<TrackListViewModel>();
+        services.AddSingleton<SampleLibraryViewModel>();
+        services.AddSingleton<MainWindowViewModel>();
+
+        // ── Views ─────────────────────────────────────────────────────────
+        services.AddSingleton<SampleLibraryView>();
+        services.AddSingleton<StatusBarView>();
+        services.AddSingleton<ContextBarView>(sp =>
         {
-            var slotService = new SlotService();
-            slotService.RegisterWindow(new WindowDescriptor(
-                windowType: typeof(MainWindow),
-                slotMap: new SlotMap()
-                    .Add(Slots.Toolbar,   SlotType.Control)
-                    .Add(Slots.ViewTools, SlotType.Control)
-                    .Add(Slots.Content,   SlotType.Page)));
-            return slotService;
+            var vm   = sp.GetRequiredService<TrackListViewModel>();
+            var view = new ContextBarView { DataContext = vm.ContextBar };
+            return view;
         });
-        services.AddSingleton<INavigationManager, NavigationManager>();
+        services.AddSingleton<TrackListView>(sp =>
+        {
+            var vm   = sp.GetRequiredService<TrackListViewModel>();
+            var view = new TrackListView { DataContext = vm };
+            return view;
+        });
 
-        // ConstellaApp
-        services.AddSingleton<ConstellaApp>(sp => new ConstellaApp(
-            sp,
-            sp.GetRequiredService<IWindowManager>(),
-            sp.GetRequiredService<IHistoryManager>(),
-            sp.GetRequiredService<INavigationManager>(),
-            sp.GetRequiredService<ISlotService>(),
-            sp.GetRequiredService<IThemeProvider>()));
-        services.AddSingleton<IConstellaApp>(sp => sp.GetRequiredService<ConstellaApp>());
-
-        // Windows & Layouts
+        // ── Windows ───────────────────────────────────────────────────────
+        services.AddSingleton<SampleLibraryWindow>(sp =>
+            new SampleLibraryWindow(
+                sp.GetRequiredService<Lazy<MainWindow>>(),
+                sp.GetRequiredService<SampleLibraryView>(),
+                sp.GetRequiredService<SampleLibraryViewModel>()));
         services.AddSingleton<MainLayout>();
         services.AddSingleton<MainWindow>();
         services.AddSingleton<ShowcaseWindow>();
 
-        // Test views
+        // ── Actions ───────────────────────────────────────────────────────
+        services.AddSingleton<ToggleSoundBankAction>();
+        services.AddSingleton<UndoLastAction>();
+
+        // ── Views (test) ──────────────────────────────────────────────────
         services.AddSingleton<TestToolbarView>();
+
+        // ── Bootstrap ─────────────────────────────────────────────────────
+        services.AddTransient<IConstellaBootstrap, ConstellaBootstrap>();
+
+        // ── ConstellaApp ──────────────────────────────────────────────────
+        services.AddSingleton<ConstellaApp>(sp =>
+        {
+            var kb = sp.GetRequiredService<IKeybindManager>();
+            kb.Register(sp.GetRequiredService<ToggleSoundBankAction>());
+            kb.Register(sp.GetRequiredService<UndoLastAction>());
+
+            // Track flyout window for keybinds
+            kb.TrackWindow(sp.GetRequiredService<SampleLibraryWindow>());
+
+            var nav    = sp.GetRequiredService<INavigationManager>();
+            var flyout = sp.GetRequiredService<SampleLibraryWindow>();
+            nav.RegisterFlyout(
+                typeof(SampleLibraryWindow),
+                show:      flyout.FlyoutShow,
+                hide:      flyout.FlyoutHide,
+                isVisible: () => flyout.IsVisible);
+
+            return new ConstellaApp(sp);
+        });
+        services.AddSingleton<IConstellaApp>(sp => sp.GetRequiredService<ConstellaApp>());
     }
 
     private static string ResolvePythonExe(string baseDir)
     {
         var dist = Path.Combine(baseDir, "python", "python.exe");
         if (File.Exists(dist)) return dist;
-
         var dir = new DirectoryInfo(baseDir);
         while (dir is not null)
         {
@@ -146,7 +160,20 @@ public sealed class ConstellaTTSCoreModule : IConstellaModule
             if (File.Exists(dev)) return dev;
             dir = dir.Parent;
         }
+        return dist;
+    }
 
+    private static string ResolveDaemonScript(string baseDir)
+    {
+        var dist = Path.Combine(baseDir, "daemon", "main.py");
+        if (File.Exists(dist)) return dist;
+        var dir = new DirectoryInfo(baseDir);
+        while (dir is not null)
+        {
+            var dev = Path.Combine(dir.FullName, "src", "ConstellaTTS.Daemon", "main.py");
+            if (File.Exists(dev)) return dev;
+            dir = dir.Parent;
+        }
         return dist;
     }
 }

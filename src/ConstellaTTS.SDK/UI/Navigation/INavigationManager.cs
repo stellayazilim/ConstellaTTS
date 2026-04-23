@@ -1,18 +1,19 @@
+using Avalonia.Controls;
+
 namespace ConstellaTTS.SDK.UI.Navigation;
 
-/// <summary>
-/// Orchestrates navigation — opens and closes windows, swaps layouts, mounts and unmounts views.
-/// Does not store state; previous states are captured by IHistoryManager before each operation.
-/// </summary>
 public interface INavigationManager
 {
-    /// <summary>
-    /// Applies a navigation request and pushes a rollback entry to history.
-    /// </summary>
+    /// <summary>The currently active window, or null if none is open.</summary>
+    Window? ActiveWindow { get; }
+
+    /// <summary>Apply request and push onto history stack.</summary>
     void Navigate(NavigationRequest request);
 
-    /// <summary>
-    /// Builds and applies a navigation request using the fluent builder.
-    /// </summary>
     void Navigate(Action<NavigationBuilder> configure);
+
+    /// <summary>Apply request WITHOUT pushing to history stack.</summary>
+    void ApplyOnly(NavigationRequest request);
+
+    void RegisterFlyout(Type flyoutType, Action show, Action hide, Func<bool> isVisible);
 }

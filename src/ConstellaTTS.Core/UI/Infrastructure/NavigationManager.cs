@@ -1,29 +1,39 @@
+using Avalonia.Controls;
+using Avalonia.Threading;
+using ConstellaTTS.Core.UI.Regions;
 using ConstellaTTS.SDK.History;
+using ConstellaTTS.SDK.UI.Keybinds;
 using ConstellaTTS.SDK.UI.Navigation;
-using ConstellaTTS.SDK.UI.Slots;
-using ConstellaTTS.SDK.UI.Windowing;
+using ConstellaTTS.SDK.UI.Regions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ConstellaTTS.Core.UI.Infrastructure;
 
-/// <summary>
-/// Applies navigation requests, captures rollback snapshots, and pushes them to history.
-/// Each Navigate call is reversible — the manager snapshots the current state before
-/// applying the request so it can be restored on rollback.
-/// </summary>
 public sealed class NavigationManager(
-    ISlotService slotService,
-    IWindowManager windowManager,
-    IHistoryManager historyManager) : INavigationManager
+    IServiceProvider sp,
+    IRegionManager   regions,
+    IHistoryManager  history,
+    IKeybindManager  keybinds) : INavigationManager
 {
-    /// <inheritdoc/>
+    private readonly Dictionary<Type, FlyoutHandler> _flyouts = new();
+    private sealed record FlyoutHandler(Action Show, Action Hide, Func<bool> IsVisible);
+
+    private Window? _activeWindow;
+    public  Window? ActiveWindow => _activeWindow;
+
+    // ── Flyout registry ───────────────────────────────────────────────────
+
+    public void RegisterFlyout(Type flyoutType, Action show, Action hide, Func<bool> isVisible) =>
+        _flyouts[flyoutType] = new FlyoutHandler(show, hide, isVisible);
+
+    // ── Navigate ──────────────────────────────────────────────────────────
+
     public void Navigate(NavigationRequest request)
     {
-        var rollback = BuildRollback(request);
         Apply(request);
-        historyManager.Push(rollback);
+        history.Push(request);
     }
 
-    /// <inheritdoc/>
     public void Navigate(Action<NavigationBuilder> configure)
     {
         var builder = new NavigationBuilder();
@@ -31,67 +41,85 @@ public sealed class NavigationManager(
         Navigate(builder.Build());
     }
 
+    public void ApplyOnly(NavigationRequest request) => Apply(request);
+
+    // ── Apply ─────────────────────────────────────────────────────────────
+
     private void Apply(NavigationRequest request)
     {
-        switch (request)
+        _ = request switch
         {
-            case OpenWindowRequest r:
-                windowManager.Open(r.WindowType);
-                break;
+            OpenWindowRequest    r => Exec(() => OpenWindow(r.WindowType)),
+            CloseWindowRequest   r => Exec(() => CloseWindow(r.WindowType)),
+            ShowFlyoutRequest    r when _flyouts.TryGetValue(r.FlyoutType, out var sh) => Exec(sh.Show),
+            HideFlyoutRequest    r when _flyouts.TryGetValue(r.FlyoutType, out var hh) => Exec(hh.Hide),
+            MountRegionRequest   r => Exec(() => MountRegion(r)),
+            UnmountRegionRequest r => Exec(() => regions.Unmount(r.RegionId)),
+            QueueNavigationRequest r => Exec(() =>
+            {
+                var openReq   = r.Requests.OfType<OpenWindowRequest>().FirstOrDefault();
+                var mountReqs = r.Requests.Where(x => x is not OpenWindowRequest).ToList();
 
-            case CloseWindowRequest r:
-                windowManager.Close(r.WindowType);
-                break;
-
-            case MountSlotRequest r:
-                slotService.Mount(windowManager.ActiveWindowType, r.Slot, r.ViewType);
-                break;
-
-            case UnmountSlotRequest r:
-                slotService.Unmount(windowManager.ActiveWindowType, r.Slot);
-                break;
-
-            case SwapLayoutRequest r:
-                slotService.Mount(windowManager.ActiveWindowType, Slots.Content, r.LayoutType);
-                break;
-
-            case QueueNavigationRequest r:
-                foreach (var sub in r.Requests)
-                    Apply(sub);
-                break;
-        }
-    }
-
-    private NavigationHistoryEntry BuildRollback(NavigationRequest request) =>
-        new(this, SnapshotCurrentState(request));
-
-    private NavigationRequest SnapshotCurrentState(NavigationRequest incoming)
-    {
-        var activeWindow = windowManager.ActiveWindowType;
-
-        return incoming switch
-        {
-            MountSlotRequest r => new QueueNavigationRequest(
-            [
-                slotService.FindSlot(activeWindow, r.Slot)?.MountedView is { } prev
-                    ? new MountSlotRequest(r.Slot, prev)
-                    : new UnmountSlotRequest(r.Slot)
-            ]),
-
-            UnmountSlotRequest r => new QueueNavigationRequest(
-            [
-                slotService.FindSlot(activeWindow, r.Slot)?.MountedView is { } prev
-                    ? new MountSlotRequest(r.Slot, prev)
-                    : new UnmountSlotRequest(r.Slot)
-            ]),
-
-            OpenWindowRequest r  => new CloseWindowRequest(r.WindowType),
-            CloseWindowRequest r => new OpenWindowRequest(r.WindowType),
-
-            QueueNavigationRequest r => new QueueNavigationRequest(
-                r.Requests.Select(SnapshotCurrentState).ToList()),
-
-            _ => incoming
+                if (openReq is not null)
+                {
+                    OpenWindow(openReq.WindowType);
+                    foreach (var sub in mountReqs) Apply(sub);
+                }
+                else
+                {
+                    foreach (var sub in r.Requests) Apply(sub);
+                }
+            }),
+            _ => 0
         };
     }
+
+    // ── Window ────────────────────────────────────────────────────────────
+
+    private void OpenWindow(Type windowType)
+    {
+        var window = (Window)sp.GetRequiredService(windowType);
+        _activeWindow = window;
+
+        // Track for keybinds — handler attaches on Activated
+        keybinds.TrackWindow(window);
+
+        if (!window.IsVisible) window.Show();
+
+        regions.RegisterRegions(window);
+    }
+
+    private void CloseWindow(Type windowType)
+    {
+        var window = (Window)sp.GetRequiredService(windowType);
+        window.Hide();
+        if (_activeWindow?.GetType() == windowType)
+            _activeWindow = null;
+    }
+
+    // ── Region ────────────────────────────────────────────────────────────
+
+    private void MountRegion(MountRegionRequest r)
+    {
+        var view = (Control)sp.GetRequiredService(r.ViewType);
+
+        if (!regions.HasRegion(r.RegionId) && _activeWindow is not null)
+        {
+            regions.RegisterRegions(_activeWindow);
+
+            if (!regions.HasRegion(r.RegionId))
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    regions.RegisterRegions(_activeWindow);
+                    regions.Mount(r.RegionId, view);
+                }, DispatcherPriority.Loaded);
+                return;
+            }
+        }
+
+        regions.Mount(r.RegionId, view);
+    }
+
+    private static int Exec(Action action) { action(); return 0; }
 }

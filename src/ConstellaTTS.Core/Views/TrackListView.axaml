@@ -1,0 +1,175 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ConstellaTTS.Core.ViewModels"
+             x:Class="ConstellaTTS.Core.Views.TrackListView"
+             x:DataType="vm:TrackListViewModel">
+
+    <Grid RowDefinitions="32,*,52">
+
+        <!-- ── Cetvel ─────────────────────────────────────────────────── -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource RulerBg}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="200,*">
+                <Border Grid.Column="0"
+                        Background="{DynamicResource BgElevated}"
+                        BorderBrush="{DynamicResource BorderSubtle}"
+                        BorderThickness="0,0,1,0"
+                        BoxShadow="4 0 12 0 #40252538">
+                    <TextBlock Text="SECTIONS"
+                               VerticalAlignment="Center"
+                               Margin="12,0"
+                               FontSize="9"
+                               FontWeight="Medium"
+                               LetterSpacing="2"
+                               Foreground="{DynamicResource FgMuted}" />
+                </Border>
+                <Border Grid.Column="1">
+                    <Grid ColumnDefinitions="*,*,*,*,*,*,*,*">
+                        <Border Grid.Column="0" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="0 s"  FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="1" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="4 s"  FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="2" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="8 s"  FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="3" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="12 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="4" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="16 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="5" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="20 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="6" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
+                            <TextBlock Text="24 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                        <Border Grid.Column="7">
+                            <TextBlock Text="28 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ── Tracks ─────────────────────────────────────────────────── -->
+        <Panel Grid.Row="1">
+
+            <!-- Sol kolon arka planı -->
+            <Border HorizontalAlignment="Left"
+                    Width="200"
+                    Background="{DynamicResource BgElevated}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="0,0,1,0"
+                    BoxShadow="4 0 16 0 #50252538" />
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="TracksControl"
+                              ItemsSource="{Binding Tracks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TrackViewModel">
+
+                            <!-- Outer border — indicator border burası, track rengiyle boyanır -->
+                            <Border BorderBrush="{Binding IndicatorBrush}"
+                                    BorderThickness="{Binding IndicatorBorderThickness}">
+                                <Border BorderBrush="{DynamicResource BorderSubtle}"
+                                        BorderThickness="0,0,0,1"
+                                        Height="56">
+                                    <Grid ColumnDefinitions="200,*">
+
+                                        <!-- Sol: Track header -->
+                                        <Border Grid.Column="0"
+                                                Background="{DynamicResource BgElevated}"
+                                                BorderBrush="{DynamicResource BorderSubtle}"
+                                                BorderThickness="0,0,1,0"
+                                                BoxShadow="4 0 16 0 #50252538">
+                                            <Grid ColumnDefinitions="4,*">
+                                                <Border Grid.Column="0" Background="{Binding Color}" />
+                                                <StackPanel Grid.Column="1"
+                                                            Margin="10,0"
+                                                            VerticalAlignment="Center"
+                                                            Spacing="2">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               FontSize="12"
+                                                               FontWeight="Medium"
+                                                               Foreground="{DynamicResource FgPrimary}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Sağ: Clip canvas -->
+                                        <Canvas Grid.Column="1"
+                                                Background="{DynamicResource BgTrack}"
+                                                ClipToBounds="True">
+                                            <ItemsControl ItemsSource="{Binding Sections}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <Canvas />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:DummySectionViewModel">
+                                                        <Canvas Width="{Binding WidthPx}"
+                                                                Height="36"
+                                                                Canvas.Left="{Binding LeftPx}"
+                                                                Canvas.Top="10">
+                                                            <Border Width="{Binding WidthPx}"
+                                                                    Height="36"
+                                                                    CornerRadius="3"
+                                                                    Background="{Binding Color}"
+                                                                    Opacity="0.15">
+                                                                <TextBlock Text="{Binding Label}"
+                                                                           FontSize="10"
+                                                                           VerticalAlignment="Center"
+                                                                           Margin="8,0"
+                                                                           Foreground="{DynamicResource FgPrimary}" />
+                                                            </Border>
+                                                        </Canvas>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Canvas>
+
+                                    </Grid>
+                                </Border>
+                            </Border>
+
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+        </Panel>
+
+        <!-- ── Minimap ────────────────────────────────────────────────── -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource BgRibbon}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="200,1,*">
+                <Border Grid.Column="0"
+                        Background="{DynamicResource BgElevated}"
+                        BorderBrush="{DynamicResource BorderSubtle}"
+                        BorderThickness="0,0,1,0"
+                        BoxShadow="4 0 16 0 #50252538">
+                    <TextBlock Text="OVERVIEW"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               FontSize="9"
+                               FontWeight="Medium"
+                               LetterSpacing="2"
+                               Foreground="{DynamicResource FgMuted}" />
+                </Border>
+                <Border Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
+                <Canvas Grid.Column="2" Background="Transparent" />
+            </Grid>
+        </Border>
+
+    </Grid>
+
+</UserControl>

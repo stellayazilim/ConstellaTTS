@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using MessagePack;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConstellaTTS.SDK.IPC;
 
@@ -23,8 +25,10 @@ namespace ConstellaTTS.SDK.IPC;
 /// </remarks>
 public sealed class IPCClient : IIPCService
 {
-    private readonly string _pythonExePath;
-    private readonly string _daemonScriptPath;
+    private readonly string   _pythonExePath;
+    private readonly string   _daemonScriptPath;
+    private readonly ILogger  _ipcLogger;       // IPCClient's own diagnostics
+    private readonly ILogger  _daemonLogger;    // forwards daemon stdout/stderr
 
     private Process? _daemonProcess;
     private NamedPipeClientStream? _pipe;
@@ -48,12 +52,25 @@ public sealed class IPCClient : IIPCService
     /// Create a new client pointing at a specific Python interpreter and
     /// daemon entry script.
     /// </summary>
-    /// <param name="pythonExePath">Absolute path to <c>python.exe</c> (e.g. from <c>infra/python/</c>).</param>
+    /// <param name="pythonExePath">Absolute path to <c>python.exe</c>.</param>
     /// <param name="daemonScriptPath">Absolute path to the daemon's <c>main.py</c>.</param>
-    public IPCClient(string pythonExePath, string daemonScriptPath)
+    /// <param name="loggerFactory">
+    /// Optional logger factory. When supplied, two categories are created:
+    ///   <c>ipc.client</c> — IPCClient's own diagnostics.
+    ///   <c>python_process</c> — forwards daemon stdout (INF) / stderr (WRN).
+    /// When null, logging is silenced (NullLoggerFactory is used).
+    /// </param>
+    public IPCClient(
+        string          pythonExePath,
+        string          daemonScriptPath,
+        ILoggerFactory? loggerFactory = null)
     {
-        _pythonExePath = pythonExePath;
+        _pythonExePath    = pythonExePath;
         _daemonScriptPath = daemonScriptPath;
+
+        loggerFactory  ??= NullLoggerFactory.Instance;
+        _ipcLogger      = loggerFactory.CreateLogger("ipc.client");
+        _daemonLogger   = loggerFactory.CreateLogger("python_process");
     }
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -65,14 +82,14 @@ public sealed class IPCClient : IIPCService
         // 1. Spawn the daemon.
         var psi = new ProcessStartInfo
         {
-            FileName = _pythonExePath,
-            Arguments = $"\"{_daemonScriptPath}\"",
-            WorkingDirectory = Path.GetDirectoryName(_daemonScriptPath)!,
-            RedirectStandardInput = true,
+            FileName               = _pythonExePath,
+            Arguments              = $"\"{_daemonScriptPath}\"",
+            WorkingDirectory       = Path.GetDirectoryName(_daemonScriptPath)!,
+            RedirectStandardInput  = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            RedirectStandardError  = true,
+            UseShellExecute        = false,
+            CreateNoWindow         = true,
         };
         psi.Environment["PYTHONUNBUFFERED"] = "1";
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
@@ -80,24 +97,26 @@ public sealed class IPCClient : IIPCService
         _daemonProcess = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start daemon process");
 
+        _ipcLogger.LogInformation("Daemon spawned, pid={Pid}", _daemonProcess.Id);
+
         // 2. Connect to the deterministic control pipe path derived from
         //    the daemon's PID. ConnectAsync(timeout) internally polls the
         //    named pipe namespace via WaitNamedPipe, so there's no race
         //    with the daemon not being ready yet — it just blocks until
         //    the daemon's listener comes up (or the timeout fires).
         var pipePath = $@"\\.\pipe\constella_{_daemonProcess.Id}_control";
+        _ipcLogger.LogDebug("Connecting to control pipe: {PipePath}", pipePath);
         await ConnectToNamedPipeAsync(pipePath, ct, TimeSpan.FromSeconds(15));
+        _ipcLogger.LogInformation("Control pipe connected");
 
-        // 3. Now that we're connected, start forwarding daemon logs so
-        //    they remain visible for the duration of the session.
-        //
+        // 3. Now that we're connected, start forwarding daemon logs.
         //    The daemon splits by severity: INFO/DEBUG go to stdout,
-        //    WARNING+ to stderr. We mirror that split into our own
-        //    console so stderr stays reserved for real problems.
+        //    WARNING+ to stderr. We preserve that split by logging at
+        //    matching levels on the "python_process" category.
         _ = Task.Run(() => PumpStreamAsync(
-            _daemonProcess.StandardOutput, Console.Out, "[daemon] "));
+            _daemonProcess.StandardOutput, _daemonLogger, LogLevel.Information));
         _ = Task.Run(() => PumpStreamAsync(
-            _daemonProcess.StandardError, Console.Error, "[daemon:error] "));
+            _daemonProcess.StandardError,  _daemonLogger, LogLevel.Warning));
 
         // 4. Start the background reader.
         _readerCts = new CancellationTokenSource();
@@ -111,6 +130,7 @@ public sealed class IPCClient : IIPCService
         if (!_connected && _daemonProcess is null) return;
 
         _connected = false;
+        _ipcLogger.LogInformation("Stopping daemon");
 
         // 1. Cancel reader loop.
         _readerCts?.Cancel();
@@ -137,6 +157,8 @@ public sealed class IPCClient : IIPCService
             }
             catch (OperationCanceledException)
             {
+                _ipcLogger.LogWarning(
+                    "Daemon did not exit gracefully within 3s, killing");
                 try { _daemonProcess.Kill(entireProcessTree: true); } catch { /* ignored */ }
             }
         }
@@ -150,6 +172,8 @@ public sealed class IPCClient : IIPCService
         _daemonProcess?.Dispose();
         _pipe = null;
         _daemonProcess = null;
+
+        _ipcLogger.LogInformation("Daemon stopped");
     }
 
     public async ValueTask DisposeAsync()
@@ -161,10 +185,10 @@ public sealed class IPCClient : IIPCService
     // ── Request/response ────────────────────────────────────────────────────
 
     public async Task<IPCResponse> RequestAsync(
-        string route,
-        object? data = null,
-        TimeSpan? timeout = null,
-        CancellationToken ct = default)
+        string            route,
+        object?           data   = null,
+        TimeSpan?         timeout = null,
+        CancellationToken ct     = default)
     {
         if (!_connected || _pipe is null)
             throw new InvalidOperationException("Client is not connected");
@@ -175,6 +199,8 @@ public sealed class IPCClient : IIPCService
 
         if (!_pending.TryAdd(req.Id, tcs))
             throw new InvalidOperationException($"Duplicate request ID {req.Id}");
+
+        _ipcLogger.LogDebug("→ {Route} (id={Id})", route, req.Id);
 
         try
         {
@@ -189,7 +215,7 @@ public sealed class IPCClient : IIPCService
         var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(30);
 
         using var timeoutCts = new CancellationTokenSource(effectiveTimeout);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        using var linked     = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         await using var registration = linked.Token.Register(() =>
         {
             if (_pending.TryRemove(req.Id, out var existing))
@@ -208,10 +234,10 @@ public sealed class IPCClient : IIPCService
     // ── Streaming ─────────────────────────────────────────────────────────────
 
     public async Task<IPCStream> StartStreamAsync(
-        string startRoute,
-        object? data = null,
-        TimeSpan? startTimeout = null,
-        CancellationToken ct = default)
+        string            startRoute,
+        object?           data         = null,
+        TimeSpan?         startTimeout = null,
+        CancellationToken ct           = default)
     {
         // 1. Call the generate-style route to start the job.
         var resp = await RequestAsync(startRoute, data, startTimeout, ct);
@@ -236,6 +262,9 @@ public sealed class IPCClient : IIPCService
         // 4. Connect to the stream pipe.
         var streamPipe = await ConnectToStreamPipeAsync(streamPipePath, ct);
 
+        _ipcLogger.LogInformation(
+            "Stream started: route={Route}, job_id={JobId}", startRoute, jobId);
+
         return new IPCStream(this, streamPipe, routePrefix, jobId);
     }
 
@@ -247,12 +276,12 @@ public sealed class IPCClient : IIPCService
             throw new InvalidOperationException(
                 $"{startRoute} response data is not a dict (got {data?.GetType().Name ?? "null"})");
 
-        string? jobId = null;
+        string? jobId      = null;
         string? streamPipe = null;
         foreach (var kvp in dict)
         {
             var key = kvp.Key as string;
-            if (key == "job_id") jobId = kvp.Value as string;
+            if      (key == "job_id")      jobId      = kvp.Value as string;
             else if (key == "stream_pipe") streamPipe = kvp.Value as string;
         }
 
@@ -276,9 +305,9 @@ public sealed class IPCClient : IIPCService
         var pipeName = pipePath[prefix.Length..];
         var pipe = new NamedPipeClientStream(
             serverName: ".",
-            pipeName: pipeName,
-            direction: PipeDirection.InOut,
-            options: PipeOptions.Asynchronous);
+            pipeName:   pipeName,
+            direction:  PipeDirection.InOut,
+            options:    PipeOptions.Asynchronous);
 
         await pipe.ConnectAsync(TimeSpan.FromSeconds(5), ct);
         return pipe;
@@ -288,7 +317,7 @@ public sealed class IPCClient : IIPCService
 
     private async Task WriteFrameAsync(IPCRequest req, CancellationToken ct)
     {
-        var body = MessagePackSerializer.Serialize(req);
+        var body   = MessagePackSerializer.Serialize(req);
         var header = new byte[4];
         BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)body.Length);
 
@@ -299,7 +328,7 @@ public sealed class IPCClient : IIPCService
             // faster and avoids a peer ever seeing a half-framed header.
             var frame = new byte[header.Length + body.Length];
             Buffer.BlockCopy(header, 0, frame, 0, header.Length);
-            Buffer.BlockCopy(body, 0, frame, header.Length, body.Length);
+            Buffer.BlockCopy(body,   0, frame, header.Length, body.Length);
 
             await _pipe!.WriteAsync(frame, ct);
         }
@@ -340,7 +369,7 @@ public sealed class IPCClient : IIPCService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[ipc] read loop failed: {ex.Message}");
+            _ipcLogger.LogError(ex, "Read loop failed");
             foreach (var kvp in _pending)
                 kvp.Value.TrySetException(ex);
             _pending.Clear();
@@ -363,14 +392,18 @@ public sealed class IPCClient : IIPCService
     {
         if (response.Id is null)
         {
-            Console.Error.WriteLine("[ipc] received response without ID; dropping");
+            _ipcLogger.LogWarning("Received response without ID, dropping");
             return;
         }
+
+        _ipcLogger.LogDebug(
+            "← response id={Id} ok={Ok}", response.Id, response.Ok);
+
         if (_pending.TryRemove(response.Id, out var tcs))
             tcs.TrySetResult(response);
         else
-            Console.Error.WriteLine(
-                $"[ipc] received response for unknown request id {response.Id}");
+            _ipcLogger.LogWarning(
+                "Received response for unknown request id {Id}", response.Id);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -387,25 +420,24 @@ public sealed class IPCClient : IIPCService
         var pipeName = pipePath[prefix.Length..];
         _pipe = new NamedPipeClientStream(
             serverName: ".",
-            pipeName: pipeName,
-            direction: PipeDirection.InOut,
-            options: PipeOptions.Asynchronous);
+            pipeName:   pipeName,
+            direction:  PipeDirection.InOut,
+            options:    PipeOptions.Asynchronous);
 
         await _pipe.ConnectAsync(timeout ?? TimeSpan.FromSeconds(5), ct);
     }
 
     /// <summary>
-    /// Pump lines from one TextReader to a TextWriter, prefixing each line.
-    /// Used to forward daemon stdout/stderr to the host's console.
+    /// Pump lines from a daemon stdout/stderr stream into the provided logger.
     /// </summary>
     private static async Task PumpStreamAsync(
-        StreamReader source, TextWriter sink, string prefix)
+        StreamReader source, ILogger logger, LogLevel level)
     {
         try
         {
             string? line;
             while ((line = await source.ReadLineAsync()) is not null)
-                await sink.WriteLineAsync(prefix + line);
+                logger.Log(level, "{Line}", line);
         }
         catch
         {

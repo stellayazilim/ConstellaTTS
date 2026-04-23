@@ -2,19 +2,29 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModel="clr-namespace:ConstellaTTS.Core.ViewModels"
+        xmlns:regions="clr-namespace:ConstellaTTS.Core.UI.Regions;assembly=ConstellaTTS.Core"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="ConstellaTTS.Core.Windows.MainWindow"
         Title="ConstellaTTS"
         MinWidth="800" MinHeight="500"
         Classes="g-bg-base"
+        x:DataType="viewModel:MainWindowViewModel"
         Background="{StaticResource BgBase}"
-        WindowDecorations="BorderOnly"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="-1">
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="False"
+        xmlns:i="clr-namespace:Avalonia.Xaml.Interactivity;assembly=Avalonia.Xaml.Interactivity"
+        xmlns:ia="clr-namespace:Avalonia.Xaml.Interactions.Core;assembly=Avalonia.Xaml.Interactions">
 
-    <Grid RowDefinitions="Auto,*">
+    <Interaction.Behaviors>
+        <EventTriggerBehavior EventName="PointerMoved">
+            <InvokeCommandAction Command="{Binding PointerCommand}" PassEventArgsToCommand="True"/>
+        </EventTriggerBehavior>
+    </Interaction.Behaviors>
 
-        <!-- Row 0: Title Bar + Ribbon -->
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Row 0: Title Bar -->
         <Border Grid.Row="0"
                 Background="{StaticResource BgRibbon}"
                 BorderBrush="{StaticResource BorderSubtle}"
@@ -59,10 +69,11 @@
             </Grid>
         </Border>
 
-        <!-- Row 1: Layout slot — MainLayout buraya mount edilir -->
-        <ContentControl Grid.Row="1"
-                        x:Name="LayoutSlot" />
+        <!-- Row 1: Layout region -->
+        <regions:RegionControl Grid.Row="1" RegionId="MainWindow.Layout" />
+
+        <!-- Row 2: Status bar region -->
+        <regions:RegionControl Grid.Row="2" RegionId="MainWindow.StatusBar" />
 
     </Grid>
-
 </Window>

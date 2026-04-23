@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="560"
+        x:Class="ConstellaTTS.Core.Windows.SampleLibraryWindow"
+
+        Title="Ses Bankası"
+
+        WindowDecorations="None"
+
+        ShowInTaskbar="False"
+        ShowActivated="True"
+        CanResize="False"
+        Topmost="False"
+
+        Background="Transparent"
+        TransparencyLevelHint="AcrylicBlur"
+
+        Width="300"
+        WindowStartupLocation="Manual">
+
+    <!-- Outer border → rounded corners + subtle accent glow + acrylic surface.
+         ContentSlot is where the SampleLibraryView is mounted at runtime. -->
+    <Border BorderBrush="{DynamicResource BorderMid}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Background="{DynamicResource BgElevated}"
+            BoxShadow="0 16 48 0 #B3000000">
+        <ContentControl x:Name="ContentSlot" />
+    </Border>
+
+</Window>

@@ -1,0 +1,6 @@
+    public void MountTrackList(TrackListViewModel vm)
+    {
+        var view = new TrackListView { DataContext = vm };
+        if (this.FindControl<ContentControl>("ContentSlot") is { } slot)
+            slot.Content = view;
+    }

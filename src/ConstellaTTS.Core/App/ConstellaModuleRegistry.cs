@@ -12,24 +12,19 @@ public sealed class ConstellaModuleRegistry
 {
     private readonly List<IConstellaModule> _modules = [];
 
-    /// <summary>Registers a module directly — use for built-in or hardcoded modules.</summary>
     public ConstellaModuleRegistry Register(IConstellaModule module)
     {
         _modules.Add(module);
         return this;
     }
 
-    /// <summary>
-    /// Scans a directory for assemblies, discovers all IConstellaModule implementations,
-    /// and registers them automatically.
-    /// </summary>
     public ConstellaModuleRegistry LoadPlugins(string directory)
     {
         if (!Directory.Exists(directory)) return this;
 
         foreach (var dll in Directory.GetFiles(directory, "*.dll"))
         {
-            var assembly = Assembly.LoadFrom(dll);
+            var assembly    = Assembly.LoadFrom(dll);
             var moduleTypes = assembly.GetTypes()
                 .Where(t => typeof(IConstellaModule).IsAssignableFrom(t)
                          && !t.IsInterface
@@ -46,10 +41,10 @@ public sealed class ConstellaModuleRegistry
     }
 
     /// <summary>
-    /// Topologically sorts all registered modules by their assembly dependencies,
-    /// calls Build() on each in order, and returns the built service provider.
+    /// Builds all registered modules in dependency order and returns the initialized app.
+    /// Entry point for application startup.
     /// </summary>
-    public IServiceProvider Initialize()
+    public IConstellaApp Build()
     {
         var sorted   = TopologicalSort(_modules);
         var services = new ServiceCollection();
@@ -57,7 +52,8 @@ public sealed class ConstellaModuleRegistry
         foreach (var module in sorted)
             module.Build(services);
 
-        return services.BuildServiceProvider();
+        var provider = services.BuildServiceProvider();
+        return provider.GetRequiredService<IConstellaApp>();
     }
 
     private static IEnumerable<IConstellaModule> TopologicalSort(IEnumerable<IConstellaModule> modules)

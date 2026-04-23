@@ -1,19 +1,20 @@
 using Avalonia.Controls;
-using Avalonia.Input;
+using ConstellaTTS.Core.ViewModels;
 
 namespace ConstellaTTS.Core.Windows;
 
 public partial class MainWindow : Window
 {
-    public MainWindow()
+    public MainWindow(MainWindowViewModel vm)
     {
         InitializeComponent();
         SetupTitleBar();
+        DataContext = vm;
     }
 
     private void SetupTitleBar()
     {
-        var dragArea = this.FindControl<Border>("TitleBarDragArea");
+        var dragArea = this.FindControl<Avalonia.Controls.Border>("TitleBarDragArea");
         if (dragArea is not null)
             dragArea.PointerPressed += (_, e) =>
             {

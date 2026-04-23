@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ConstellaTTS.Core.Windows.IrreversibleConfirmWindow"
+
+        Title="Uyarı"
+        WindowDecorations="None"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="Height"
+        Width="360"
+        WindowStartupLocation="CenterOwner"
+        Background="Transparent"
+        TransparencyLevelHint="AcrylicBlur">
+
+    <Border BorderBrush="{DynamicResource BorderMid}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Background="{DynamicResource BgElevated}"
+            BoxShadow="0 16 48 0 #B3000000"
+            Padding="24">
+        <StackPanel Spacing="20">
+
+            <!-- Icon + Title -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="⚠"
+                           FontSize="20"
+                           Foreground="{DynamicResource AccentWarn}"
+                           VerticalAlignment="Center"/>
+                <TextBlock x:Name="TitleText"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource FgPrimary}"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Description -->
+            <TextBlock x:Name="DescriptionText"
+                       FontSize="12"
+                       Foreground="{DynamicResource FgSecondary}"
+                       TextWrapping="Wrap"
+                       LineHeight="20"/>
+
+            <!-- Warning -->
+            <TextBlock Text="Bu işlem geri alınamaz. Geçmiş temizlenecek."
+                       FontSize="11"
+                       Foreground="{DynamicResource FgMuted}"
+                       TextWrapping="Wrap"/>
+
+            <!-- Do not show again -->
+            <CheckBox x:Name="DoNotShowAgainCheck"
+                      Content="Bu eylem için bir daha gösterme"
+                      FontSize="12"
+                      Foreground="{DynamicResource FgSecondary}"/>
+
+            <!-- Buttons -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                <Button x:Name="CancelButton"
+                        Content="İptal"
+                        Classes="ghost"
+                        Width="90"/>
+                <Button x:Name="ConfirmButton"
+                        Content="Uygula"
+                        Classes="danger"
+                        Width="90"/>
+            </StackPanel>
+
+        </StackPanel>
+    </Border>
+
+</Window>

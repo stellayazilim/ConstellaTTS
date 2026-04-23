@@ -20,4 +20,17 @@
         <Setter Property="FontSize" Value="10" />
     </Style>
 
+    <!-- ══════════════════════════════
+         WINDOW CHROME
+         MainWindow custom title bar button overrides.
+    ══════════════════════════════ -->
+
+    <Style Selector="Button#MinimizeBtn:pointerover, Button#MaximizeBtn:pointerover">
+        <Setter Property="Background" Value="#2A2A4A" />
+    </Style>
+    <Style Selector="Button#CloseBtn:pointerover">
+        <Setter Property="Background" Value="#C42B2B" />
+        <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
+
 </Styles>

@@ -9,11 +9,16 @@
     <ItemGroup>
         <PackageReference Include="Avalonia.BuildServices" Version="11.3.2">
           <PrivateAssets>all</PrivateAssets>
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.0.1" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
         <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.3" />
         <PackageReference Include="Svg.Skia" Version="4.3.0" />
+
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+        <PackageReference Include="Xaml.Behaviors" Version="12.0.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -28,9 +33,18 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Compile Update="Controls\TrackHeader.axaml.cs">
-        <DependentUpon>TrackHeader.axaml</DependentUpon>
+      <Compile Update="Views\StatusBarView.axaml.cs">
+        <DependentUpon>StatusBarView.axaml</DependentUpon>
       </Compile>
+      <Compile Update="Windows\IrreversibleConfirmWindow.axaml.cs">
+        <DependentUpon>IrreversibleConfirmWindow.axaml</DependentUpon>
+      </Compile>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="ConstellaTTS.SDK">
+        <HintPath>..\ConstellaTTS.Avalonia\bin\Debug\net10.0\ConstellaTTS.SDK.dll</HintPath>
+      </Reference>
     </ItemGroup>
 
 </Project>

@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ConstellaTTS.Core.ViewModels"
+             x:Class="ConstellaTTS.Core.Views.SampleLibraryView"
+             x:DataType="vm:SampleLibraryViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- ── Row 0: Filter bar ─────────────────────────────── -->
+        <Border Grid.Row="0"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto,Auto"
+                  Margin="10,6"
+                  ColumnSpacing="5">
+
+                <TextBox Grid.Column="0"
+                         Classes="ctts"
+                         PlaceholderText="Ara…"
+                         FontSize="11"
+                         Padding="7,3"
+                         Text="{Binding SearchText}" />
+
+                <Button Grid.Column="1"
+                        x:Name="UploadButton"
+                        Padding="8,3"
+                        FontSize="10"
+                        Background="#1F7C6AF7"
+                        BorderBrush="#4C7C6AF7"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Foreground="{DynamicResource AccentPurple}"
+                        Content="+ Yükle"
+                        ToolTip.Tip="Dosyadan sample yükle" />
+
+                <Button Grid.Column="2"
+                        x:Name="RecordButton"
+                        Width="26" Height="26"
+                        Padding="0"
+                        Background="#14FF60A0"
+                        BorderBrush="#59FF60A0"
+                        BorderThickness="1"
+                        CornerRadius="13"
+                        VerticalContentAlignment="Center"
+                        HorizontalContentAlignment="Center"
+                        ToolTip.Tip="Kayıt (mikrofon)">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{DynamicResource AccentRose}" />
+                </Button>
+
+            </Grid>
+        </Border>
+
+        <!-- ── Row 1: Content slot ───────────────────────────── -->
+        <ContentControl Grid.Row="1"
+                        x:Name="ContentSlot" />
+
+    </Grid>
+
+</UserControl>

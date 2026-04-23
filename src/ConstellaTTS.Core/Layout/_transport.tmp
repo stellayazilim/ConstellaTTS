@@ -1,0 +1,18 @@
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            Margin="8,2"
+                            VerticalAlignment="Center">
+                    <controls:PlayerButton Foreground="{StaticResource AccentPurple}"
+                                           ToolTip.Tip="Go to Start">
+                        <controls:GoToStartIcon />
+                    </controls:PlayerButton>
+                    <controls:PlayerButton Foreground="{StaticResource AccentBlue}"
+                                           ToolTip.Tip="Play">
+                        <controls:PlayIcon />
+                    </controls:PlayerButton>
+                    <controls:PlayerButton Foreground="{StaticResource AccentPink}"
+                                           ToolTip.Tip="Stop">
+                        <controls:StopIcon />
+                    </controls:PlayerButton>
+                </StackPanel>

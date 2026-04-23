@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ConstellaTTS.Core.ViewModels"
+             x:Class="ConstellaTTS.Core.Views.ContextBarView"
+             x:DataType="vm:ContextBarViewModel">
+
+    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+
+        <!-- Create / Select / Stage mod butonları -->
+        <Button Grid.Column="0" Classes="mode-btn active">Create</Button>
+        <Button Grid.Column="1" Classes="mode-btn">Select</Button>
+        <Button Grid.Column="2" Classes="mode-btn">Stage</Button>
+
+        <Border Grid.Column="3" Classes="g-separator-v" Margin="8,8" />
+
+        <!-- Aktif section özeti -->
+        <TextBlock Grid.Column="4"
+                   Text="{Binding SectionLabel}"
+                   FontSize="11"
+                   FontWeight="Medium"
+                   Foreground="{DynamicResource FgPrimary}"
+                   VerticalAlignment="Center" />
+
+        <!-- Hints — sağa yaslanır -->
+        <TextBlock Grid.Column="6"
+                   Text="{Binding Hints}"
+                   FontSize="10"
+                   Foreground="{DynamicResource FgMuted}"
+                   VerticalAlignment="Center"
+                   Opacity="0.6" />
+
+    </Grid>
+
+</UserControl>

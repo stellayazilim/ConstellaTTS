@@ -1,54 +1,58 @@
-using ConstellaTTS.SDK.UI.Slots;
-
 namespace ConstellaTTS.SDK.UI.Navigation;
 
 /// <summary>
-/// Fluent builder for composing one or more navigation requests into a single operation.
-/// Pass the result of Build() to INavigationManager.Navigate.
+/// Fluent builder for composing navigation requests.
+/// Pure data — no INavigationManager dependency.
 /// </summary>
 public sealed class NavigationBuilder
 {
     private readonly List<NavigationRequest> _requests = [];
 
-    /// <summary>Queues a request to open a window of the specified type.</summary>
     public NavigationBuilder OpenWindow<TWindow>()
     {
         _requests.Add(new OpenWindowRequest(typeof(TWindow)));
         return this;
     }
 
-    /// <summary>Queues a request to close a window of the specified type.</summary>
     public NavigationBuilder CloseWindow<TWindow>()
     {
         _requests.Add(new CloseWindowRequest(typeof(TWindow)));
         return this;
     }
 
-    /// <summary>Queues a request to swap the active layout.</summary>
-    public NavigationBuilder SwapLayout<TLayout>()
+    public NavigationBuilder ShowFlyout<TFlyout>()
     {
-        _requests.Add(new SwapLayoutRequest(typeof(TLayout)));
+        _requests.Add(new ShowFlyoutRequest(typeof(TFlyout)));
         return this;
     }
 
-    /// <summary>Queues a request to mount a view into the specified slot.</summary>
-    public NavigationBuilder Mount(Slot slot, Type viewType)
+    public NavigationBuilder HideFlyout<TFlyout>()
     {
-        _requests.Add(new MountSlotRequest(slot, viewType));
+        _requests.Add(new HideFlyoutRequest(typeof(TFlyout)));
         return this;
     }
 
-    /// <summary>Queues a request to unmount the current view from the specified slot.</summary>
-    public NavigationBuilder Unmount(Slot slot)
+    /// <summary>Mount a view into a named region.</summary>
+    public NavigationBuilder Mount(string regionId, Type viewType)
     {
-        _requests.Add(new UnmountSlotRequest(slot));
+        _requests.Add(new MountRegionRequest(regionId, viewType));
         return this;
     }
 
-    /// <summary>
-    /// Builds the navigation request. Returns a single request if only one was queued,
-    /// or a QueueNavigationRequest wrapping all queued requests.
-    /// </summary>
+    /// <summary>Mount a view into a named region.</summary>
+    public NavigationBuilder Mount<TView>(string regionId)
+    {
+        _requests.Add(new MountRegionRequest(regionId, typeof(TView)));
+        return this;
+    }
+
+    /// <summary>Unmount the current view from a named region.</summary>
+    public NavigationBuilder Unmount(string regionId)
+    {
+        _requests.Add(new UnmountRegionRequest(regionId));
+        return this;
+    }
+
     public NavigationRequest Build() => _requests.Count == 1
         ? _requests[0]
         : new QueueNavigationRequest(_requests);

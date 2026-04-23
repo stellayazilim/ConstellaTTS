@@ -1,0 +1,42 @@
+    <!-- ══════════════════════════════
+         BADGE
+    ══════════════════════════════ -->
+
+    <Style Selector="Border.badge">
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Padding" Value="6,2" />
+    </Style>
+    <Style Selector="Border.badge TextBlock">
+        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="LetterSpacing" Value="0.5" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.badge.cyan">
+        <Setter Property="Background" Value="#1A00CFCF" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentCyan}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.badge.cyan TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource AccentCyan}" />
+    </Style>
+
+    <!-- ══════════════════════════════
+         TIMECODE
+    ══════════════════════════════ -->
+
+    <Style Selector="Border.timecode">
+        <Setter Property="Background" Value="{DynamicResource BgElevated}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderMid}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="8,3" />
+    </Style>
+    <Style Selector="Border.timecode TextBlock">
+        <Setter Property="FontFamily" Value="JetBrains Mono,Cascadia Code,Consolas,monospace" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource FgPrimary}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+</Styles>

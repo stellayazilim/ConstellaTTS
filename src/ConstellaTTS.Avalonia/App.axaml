@@ -3,6 +3,24 @@
              x:Class="ConstellaTTS.Avalonia.App"
              RequestedThemeVariant="Dark">
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         App.axaml hosts only app-wide foundations:
+
+           • Tokens      — palette atoms (Noir, Violet, …).
+           • MainTheme   — ThemeDictionaries wrapper; Avalonia picks the
+                           right inner dictionary automatically based on
+                           RequestedThemeVariant (Dark / Light). Brings
+                           semantic aliases in for free.
+           • FluentTheme — fallback base styling for any control that
+                           isn't overridden by our design system.
+
+         Module-specific resources (ConstellaTTS design-system styles,
+         Core control styles, window chrome, …) are registered at
+         runtime via IThemeProvider.RegisterGlobal(...) by the owning
+         module — see ConstellaTTSCoreModule.Build for the reference
+         pattern.
+    ═══════════════════════════════════════════════════════════════ -->
+
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -14,17 +32,7 @@
 
     <Application.Styles>
         <FluentTheme />
-        <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/DarkTheme.axaml" />
-        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/ControlStyles.axaml" />
-
-        <!-- Window control button overrides -->
-        <Style Selector="Button#MinimizeBtn:pointerover, Button#MaximizeBtn:pointerover">
-            <Setter Property="Background" Value="#2A2A4A" />
-        </Style>
-        <Style Selector="Button#CloseBtn:pointerover">
-            <Setter Property="Background" Value="#C42B2B" />
-            <Setter Property="Foreground" Value="#FFFFFF" />
-        </Style>
+        <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/DarkTheme.axaml"></StyleInclude>
     </Application.Styles>
 
 </Application>
