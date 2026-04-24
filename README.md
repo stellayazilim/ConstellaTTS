@@ -73,6 +73,35 @@ public class MyPlugin : IConstellaModule
 
 Plugins are discovered from `./plugins/` — DLLs scanned, `IConstellaModule` implementations instantiated, sorted by dependency graph, then `Build()` called in order.
 
+### Timeline Editor
+
+Blocks store time (`StartSec`, `DurationSec`); the viewport projects
+to pixels at render time. Zoom and scroll change the projection without
+ever touching stored coordinates — edits are zoom-independent and
+serialisation is trivial.
+
+```
+ITimelineViewport (singleton)
+    ↓  PxPerSec, ScrollOffsetSec
+TrackListView            — canvas + rows + reorder drag
+TimelineRulerControl     — tick ladder, wheel zoom
+TimelineMinimapControl   — project overview, pan + fit-to-range
+
+IToolModeService   — Select / Create, Section / Stage,
+                     + PreviewTool / PreviewCreateType for Ctrl hover
+ISelectionService  — SelectedBlock, SelectedTrack (drives editor overlay)
+IHistoryManager    — CreateBlockAction / RemoveBlockAction (reversible)
+```
+
+Block-create collisions are resolved at commit time by
+`BlockBumping.Compute`: right neighbours cascade further right, and
+their original positions snapshot into the undo action so Ctrl+Z
+restores the exact pre-create state. Ctrl-over-canvas transiently
+overrides the tool to Create so any tool can draw without a mode
+switch; the context bar highlights the override via the viewport’s
+`EffectiveTool` so the UI tracks the preview, not just the committed
+state.
+
 ### IPC Daemon
 
 Daemon is an embedded Python 3.11 subprocess the host launches on demand.
@@ -205,12 +234,13 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 
 | Phase | Focus |
 |-------|-------|
-| **Done** | IPC daemon — named-pipe transport, routing, streaming with backpressure, cancel |
-| **Now** | Domain model (Section, Track, Project), `.wwv` file format |
+| **Done** | IPC daemon — named-pipe transport, routing, streaming, backpressure, cancel |
+| **Done** | Timeline editor — track list, ruler, minimap, block create/select/delete, undoable history |
+| **Now** | Domain persistence — `.wwv` project format, save/load, dirty tracking |
 | **Next** | First real TTS adapter (Chatterbox), waveform extraction, audio playback wiring |
-| **Soon** | Timeline UI, section views, emotion color system |
-| **Later** | Plugin manifest system, adapter generator, drag & drop model install |
-| **Future** | Duration control (Rubberband, ScalerGAN, IndexTTS-2), export pipeline |
+| **Next** | Section editor v2 — emotion slider, seed scrubber, model dropdown, sound-bank drop target |
+| **Soon** | Plugin manifest system, adapter generator, drag & drop model install |
+| **Later** | Duration control (Rubberband, ScalerGAN, IndexTTS-2), export pipeline |
 
 ---
 
@@ -300,16 +330,84 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] `SoundService` — job index, `StartJob` / `Append`, `JobStarted` event
 - [x] Flush policy — flush to disk on threshold OR `final=true`, then Opus encode placeholder
 
-### 🔲 Core Application
-- [ ] `Section` domain model — text, seed, emotion, voice_ref, duration, dirty flag, WER
-- [ ] `Track` domain model — name, engine, color, global ref, expanded state
-- [ ] `SectionViewModel` — core observable properties + `ExtraParamsBefore/After` slots
-- [ ] `Project` / `.wwv` file format (ZIP: project.json + refs/ + generated/ + meta.json)
-- [ ] Timeline UI — `AbsoluteLayout` lanes, section positioning (`StartSec * PPS`)
-- [ ] Section collapsed view — seed, text, voice ref, emotion border color
-- [ ] Section expanded view — core params + plugin extra params
-- [ ] Emotion spring color scale (blue → green → yellow → orange → red)
-- [ ] Dirty indicator (yellow left border) + WER warning icon
+### ✅ Timeline Editor
+
+**Viewport & geometry**
+- [x] `ITimelineViewport` — single source of truth for `PxPerSec` / `ScrollOffsetSec`
+- [x] `TimelineViewport.Current` singleton with `INotifyPropertyChanged`
+- [x] Time-domain storage — `StartSec` / `DurationSec` on VM; pixels computed at render boundary
+- [x] `TimelineConverters.TimeToPx` / `DurationToPx` — `IMultiValueConverter`s for viewport-aware binding
+
+**Track list**
+- [x] `TrackListView` — 200 px header + canvas layout, per-row drop indicator
+- [x] `TrackListViewModel.Tracks` — observable collection with `Reorder` / `AddTrack` / `RemoveTrack`
+- [x] `TrackViewModel` — `Track` primitive binding + drag-ghost state
+- [x] Drag-to-reorder — header press, floating preview, 3-stage release animation (close source → open target → commit)
+
+**Blocks (Sections + Stages)**
+- [x] `IStageViewModel` — shared geometry (StartSec/DurationSec/EndSec/Label/Bg/AccentColor)
+- [x] `ISectionViewModel : IStageViewModel` — adds Emotion, Dirty, Model
+- [x] `StageViewModel` — dashed-outline visual annotation, no TTS pipeline
+- [x] `SectionViewModel` — full TTS block with emotion gradient strip + dirty indicator
+- [x] Polymorphic `Sections` collection — `ObservableCollection<IStageViewModel>`
+- [x] `ItemContainerTheme` positions `ContentPresenter` via `Canvas.Left` — fixes stacked-at-origin bug in nested `DataTemplate`s
+
+**Ruler**
+- [x] `TimelineRulerControl` — self-drawing with nice-number tick ladder (0.05s → 3600s)
+- [x] 60 px min tick spacing — labels rescale automatically across zoom levels
+- [x] Plain wheel = horizontal pan, Ctrl+wheel = cursor-anchored zoom
+
+**Minimap**
+- [x] `TimelineMinimapControl` — self-drawing project overview with per-track bands
+- [x] Fixed project-end scale — `max(lastBlock.EndSec, 30s)`, viewport-independent
+- [x] Viewport indicator — dim overlay outside + violet frame inside, clamped to minimap bounds
+- [x] Plain drag → delta-based viewport pan (no click-jump)
+- [x] Ctrl+drag → select-range preview → fit canvas to selection on release
+
+**Create gesture**
+- [x] Drag on canvas → preview rectangle with live duration label inside
+- [x] Press inside existing block → anchor snaps to block's `EndSec` (grows rightward)
+- [x] Left-clamp to previous neighbour's end (zoom-independent, time domain)
+- [x] Commit-time cascading right-push — `BlockBumping.Compute` records original positions
+- [x] `CreateBlockAction` / `RemoveBlockAction` — symmetric reversible actions with bump snapshot
+- [x] Ctrl override = Section, Ctrl+Shift override = Stage (regardless of committed tool)
+- [x] Auto-switch to Select + focus new block on release
+
+**Select & edit**
+- [x] `IToolModeService` — Select / Create toggle + Section / Stage sub-type
+- [x] Preview layer (`PreviewTool` / `PreviewCreateType`) — hover-driven transient override
+- [x] `ISelectionService` — `SelectedBlock` + `SelectedTrack`
+- [x] Click block in Select mode → selection + open editor overlay
+- [x] Click empty canvas → clear selection + close editor
+- [x] Block editor overlay — duration/start/end chips, label `TextBox`, close button
+- [x] Editor auto-positions below selected block, viewport-aware
+- [x] Editor auto-collapses when block scrolls fully off-screen
+- [x] Left/right clamp — editor never overlaps track-header column or spills offscreen
+- [x] Ctrl hover preview — context bar highlights Create/Section without committing
+- [x] `TopLevel` key listener — Ctrl state transitions apply instantly without mouse movement
+- [x] Context bar Section/Stage buttons hidden outside Create mode (no misleading affordances)
+- [x] Context bar Delete button — history-tracked `RemoveBlockAction` (Ctrl+Z restores)
+- [x] Context bar + Track button — appends new track with palette-cycled accent
+
+**Input routing**
+- [x] Wheel: plain = horizontal scroll, Shift = vertical (ScrollViewer), Ctrl = zoom
+- [x] Ruler wheel inherits canvas semantics (same modifiers, same feel)
+- [x] `PointerCaptureLost` + `_inReleaseHandler` re-entry guard — synchronous `Capture(null)` during release doesn't wipe drag state
+- [x] Block editor pointer isolation — presses inside don't leak into canvas gestures
+
+**History**
+- [x] `IReversible` — actions produce their inverse on `Reverse()`
+- [x] `HistoryManager` — undo/redo stacks, push clears redo, Ctrl+Z / Ctrl+Y
+- [x] `RollbackFailedException` / `UndoFailedException` / `RedoFailedException` — typed failures preserve rollback invariants
+- [x] Block create, delete, bump all covered — every edit is undoable
+
+### 🔲 Project & Persistence
+- [ ] `Section` domain model — text, seed, voice_ref, WER, QC metadata
+- [ ] `Project` root — tracks, sections, global refs, metadata
+- [ ] `.wwv` file format (ZIP: `project.json` + `refs/` + `generated/` + `meta.json`)
+- [ ] Save/load round-trip, dirty tracking at project level
+- [ ] WER warning icon on sections (Whisper transcript deviation threshold)
+- [ ] Recent projects menu, autosave timer
 
 ### 🔲 Python TTS Daemon
 - [ ] First real adapter: Chatterbox Multilingual
@@ -343,9 +441,12 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 ### 🔲 Visual Enhancements
 - [ ] Emotion graph — `Polyline` per track, emotion over time axis
 - [ ] Waveform overlay — peak-sampled float array rendered on sections
-- [ ] Stage direction sections — dashed style, no waveform, excluded from emotion graph
+- [x] Stage direction sections — dashed style, no waveform, excluded from emotion graph
+- [x] Ctrl+Scroll zoom on timeline — cursor-anchored, clamped at [4, 400] px/sec
+- [x] Emotion spring color scale (blue → green → yellow → orange → red) — `Gradient-Emotion` bottom strip on sections
+- [x] Dirty indicator (yellow left border) on sections
+- [ ] WER warning icon on sections
 - [ ] Track expand/collapse animation
-- [ ] Ctrl+Scroll zoom on timeline
 - [ ] `ItemsRepeater` virtualization for long timelines
 
 ### 🔲 Export
