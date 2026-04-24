@@ -15,10 +15,13 @@ public sealed class ConstellaBootstrap : IConstellaBootstrap
 
     public Task BootstrapAsync(CancellationToken cancellationToken = default)
     {
-        _nav!.Navigate(new NavigationBuilder()
+        // Bootstrap navigation is infrastructure — must NOT enter the history
+        // stack. Otherwise Ctrl+Z would rollback the initial window+mounts,
+        // closing MainWindow and (under default desktop lifetime) the entire app.
+        _nav!.ApplyOnly(new NavigationBuilder()
             .OpenWindow<MainWindow>()
             .Mount(Regions.Layout,    typeof(MainLayout))
-            .Mount(Regions.Toolbar,   typeof(TestToolbarView))
+            .Mount(Regions.Toolbar,   typeof(DawToolbarView))
             .Mount(Regions.ViewTools, typeof(ContextBarView))
             .Mount(Regions.Content,   typeof(TrackListView))
             .Mount(Regions.StatusBar, typeof(StatusBarView))

@@ -1,27 +1,28 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using ConstellaTTS.Domain;
-using ConstellaTTS.SDK.Primitives;
+using ConstellaTTS.Domain.Primitives;
 
 namespace ConstellaTTS.SDK;
 
 /// <summary>
-/// Abstract base ViewModel for all section types.
-/// Cannot be instantiated directly — derive for each engine/model combination.
+/// Default ViewModel for a timeline section — a block that participates
+/// in the TTS pipeline. Inherits label/geometry/colour from
+/// <see cref="StageViewModel"/> and adds emotion, dirty state, and the
+/// engine model binding.
+///
+/// Instantiated with <see cref="Model"/> = null; the user binds an
+/// engine later via the section editor's model dropdown.
 /// </summary>
-public abstract partial class SectionViewModel(Section section) : ViewModel
+public partial class SectionViewModel : StageViewModel, ISectionViewModel
 {
-    public string  Text        { get; set; } = section.Text;
-    public string  Engine      { get; set; } = section.Engine;
-    public float   Emotion     { get; set; } = section.Emotion;
-    public float?  DurOverride { get; set; } = section.DurOverride;
-    public DurationStrategy DurStrategy { get; set; } = section.DurStrategy;
-    public bool    IsStageDir  { get; set; } = section.IsStageDir;
+    /// <summary>Emotion intensity 0–100 (cool → hot).</summary>
+    [ObservableProperty] private int _emotion;
 
-    // [ObservableProperty] public  partial int Seed { get; set; }
-    // [ObservableProperty] public partial float   StartSec      { get; set; }
-    // [ObservableProperty] public partial string? VoiceRef      { get; set; }
-    // [ObservableProperty] public partial bool    Dirty         { get; set; }
-    // [ObservableProperty] public partial float?  Wer           { get; set; }
-    // [ObservableProperty] public partial string? GeneratedFile { get; set; }
+    /// <summary>Has unsaved/ungenerated changes — shows yellow left strip.</summary>
+    [ObservableProperty] private bool _dirty;
+
+    /// <summary>
+    /// Engine-specific parameter bundle. Null until the user binds an
+    /// engine via the section editor's model dropdown.
+    /// </summary>
+    [ObservableProperty] private Model? _model;
 }
-

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using ConstellaTTS.Core.ViewModels;
 
 namespace ConstellaTTS.Core.Windows;
@@ -9,6 +10,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         SetupTitleBar();
+        SetupResizeGrips();
         DataContext = vm;
     }
 
@@ -36,5 +38,35 @@ public partial class MainWindow : Window
         var close = this.FindControl<Button>("CloseBtn");
         if (close is not null)
             close.Click += (_, _) => Close();
+    }
+
+    /// <summary>
+    /// Wires each edge/corner hit zone to the appropriate <see cref="WindowEdge"/>
+    /// so left-click-drag initiates an OS-native resize. While maximized the
+    /// grips are no-ops — user must un-maximize first, matching standard apps.
+    /// </summary>
+    private void SetupResizeGrips()
+    {
+        HookGrip("ResizeNW", WindowEdge.NorthWest);
+        HookGrip("ResizeN",  WindowEdge.North);
+        HookGrip("ResizeNE", WindowEdge.NorthEast);
+        HookGrip("ResizeW",  WindowEdge.West);
+        HookGrip("ResizeE",  WindowEdge.East);
+        HookGrip("ResizeSW", WindowEdge.SouthWest);
+        HookGrip("ResizeS",  WindowEdge.South);
+        HookGrip("ResizeSE", WindowEdge.SouthEast);
+    }
+
+    private void HookGrip(string controlName, WindowEdge edge)
+    {
+        var grip = this.FindControl<Avalonia.Controls.Border>(controlName);
+        if (grip is null) return;
+
+        grip.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+            if (WindowState == WindowState.Maximized) return;
+            BeginResizeDrag(edge, e);
+        };
     }
 }

@@ -2,8 +2,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ConstellaTTS.Core.ViewModels"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="32"
-             x:Class="ConstellaTTS.Core.Views.TestToolbarView">
+             x:Class="ConstellaTTS.Core.Views.DawToolbarView"
+             x:DataType="vm:DawToolbarViewModel">
 
     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0">
 
@@ -26,8 +28,9 @@
 
         <Border Classes="g-separator-v" Margin="4,8" />
 
-        <Button x:Name="SampleLibraryButton"
-                Classes="mode-btn"
+        <Button Classes="mode-btn"
+                Classes.active="{Binding IsSoundBankVisible}"
+                Command="{Binding ToggleSoundBank}"
                 ToolTip.Tip="Ses Bankası (Ctrl+L)">
             <StackPanel Orientation="Horizontal" Spacing="5">
                 <TextBlock Text="🎵" FontSize="11" />

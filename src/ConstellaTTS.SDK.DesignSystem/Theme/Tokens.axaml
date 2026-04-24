@@ -54,6 +54,14 @@
     <Color x:Key="Yellow-1">#fbbf24</Color>
     <Color x:Key="Red-1">#f87171</Color>
 
+    <!-- EMOTION SCALE / calibrated cool→hot for section emotion intensity.
+         Must stay in sync with EmotionColors helper in SDK.DesignSystem/Helpers. -->
+    <Color x:Key="Emotion-0">#60a5fa</Color>
+    <Color x:Key="Emotion-25">#34d399</Color>
+    <Color x:Key="Emotion-50">#fbbf24</Color>
+    <Color x:Key="Emotion-75">#f97316</Color>
+    <Color x:Key="Emotion-100">#ef4444</Color>
+
     <!-- GRADIENTS -->
     <LinearGradientBrush x:Key="Gradient-Neon"
                          StartPoint="0%,0%"
@@ -84,6 +92,16 @@
         <GradientStop Color="{StaticResource Blue-1}"   Offset="0"   />
         <GradientStop Color="{StaticResource Violet-1}" Offset="0.5" />
         <GradientStop Color="{StaticResource Violet-2}" Offset="1"   />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Gradient-Emotion"
+                         StartPoint="0%,0%"
+                         EndPoint="100%,0%">
+        <GradientStop Color="{StaticResource Emotion-0}"   Offset="0"    />
+        <GradientStop Color="{StaticResource Emotion-25}"  Offset="0.25" />
+        <GradientStop Color="{StaticResource Emotion-50}"  Offset="0.5"  />
+        <GradientStop Color="{StaticResource Emotion-75}"  Offset="0.75" />
+        <GradientStop Color="{StaticResource Emotion-100}" Offset="1"    />
     </LinearGradientBrush>
 
 </ResourceDictionary>

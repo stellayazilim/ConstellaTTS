@@ -1,12 +1,4 @@
-using ConstellaTTS.Domain;
-using ConstellaTTS.Domain.Primitives;
-using ConstellaTTS.SDK;
-
-namespace ConstellaTTS.Core.ViewModels;
-
-public partial class SectionViewModel<TModel>(Section<TModel> section)
-    : SectionViewModel(section)
-    where TModel : Model
-{
-    public TModel? Model { get; } = section.Model;
-}
+// Removed — generic SectionViewModel<TModel> collapsed into the non-generic
+// SectionViewModel in ConstellaTTS.SDK. A section is created with Model=null
+// and the user binds an engine later via the section editor's dropdown, so
+// parameterising the type upfront provides no benefit. Safe to git-rm.

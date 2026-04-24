@@ -39,3 +39,34 @@ public sealed class UndoFailedException : HistoryException
         Entry = inner.Entry;
     }
 }
+
+/// <summary>
+/// Thrown when a redo operation fails at the history-manager layer. The
+/// entry that failed is available via <see cref="Entry"/>. Both stacks
+/// have been restored to their pre-redo state.
+/// </summary>
+public sealed class RedoFailedException : HistoryException
+{
+    public IReversible Entry { get; }
+
+    public RedoFailedException(IReversible entry, Exception inner)
+        : base($"Redo failed for [{entry.Id}] '{entry.Name}': {inner.Message}", inner)
+    {
+        Entry = entry;
+    }
+}
+
+/// <summary>
+/// Thrown when a redo action fails at the UI/action layer.
+/// Wraps <see cref="RedoFailedException"/> with a user-facing message.
+/// </summary>
+public sealed class RedoActionFailedException : HistoryException
+{
+    public IReversible Entry { get; }
+
+    public RedoActionFailedException(RedoFailedException inner)
+        : base($"'{inner.Entry.Name}' yeniden uygulanamadı.", inner)
+    {
+        Entry = inner.Entry;
+    }
+}

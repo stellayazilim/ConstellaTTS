@@ -1,25 +1,41 @@
 using System.Collections.ObjectModel;
-using System.Net.Mime;
-using Avalonia.Logging;
-using ConstellaTTS.Core.Logging;
+using ConstellaTTS.Domain;
+using ConstellaTTS.SDK;
 using ConstellaTTS.SDK.Primitives;
-using Microsoft.Extensions.Logging;
 
 namespace ConstellaTTS.Core.ViewModels;
 
-public sealed class TrackListViewModel: ViewModel
+/// <summary>
+/// ViewModel for the track list view. Owns the observable track collection
+/// and the reorder operation directly — there is no separate "project
+/// manager" layer because there is no project concept to manage yet.
+///
+/// Placeholder tracks are seeded inline; when real save/load arrives the
+/// seeder will be replaced with a load-from-disk path, but ownership of
+/// the collection stays here.
+/// </summary>
+public sealed class TrackListViewModel : ViewModel
 {
-    private readonly ProjectManager _projectManager;
-    public TrackListViewModel(ProjectManager projectManager)
-    {
-        _projectManager = projectManager;
-    }
-    
-    public ObservableCollection<TrackViewModel> Tracks => _projectManager.Tracks;
+    /// <summary>
+    /// Accent colour palette cycled through for new tracks. Picks the entry
+    /// at (Tracks.Count % palette.Length) so adding many tracks yields a
+    /// stable, repeating rainbow rather than a random wash.
+    /// </summary>
+    private static readonly (string color, string bg)[] NewTrackPalette =
+    [
+        ("#7C6AF7", "#2A2560"),
+        ("#60AAFF", "#1A3A5C"),
+        ("#FF60A0", "#3A1A3A"),
+        ("#50E0FF", "#0F3A4A"),
+        ("#D060FF", "#2A153A"),
+        ("#4ADE80", "#143A24"),
+        ("#FBBF24", "#3A2A10"),
+    ];
 
-    public ContextBarViewModel ContextBar { get; } = new();
+    /// <summary>Tracks displayed on the timeline. The canonical list.</summary>
+    public ObservableCollection<ITrackViewModel> Tracks { get; } = [];
 
-    // Dummy chapters — replaced by real project data later
+    /// <summary>Dummy chapter list for the chapter strip — placeholder data.</summary>
     public ObservableCollection<DummyChapterViewModel> Chapters { get; } =
     [
         new() { Name = "Giriş",   Color = "#7C6AF7", TrackCount = "2 track", Duration = "0:32" },
@@ -27,4 +43,136 @@ public sealed class TrackListViewModel: ViewModel
         new() { Name = "Bölüm II",Color = "#D060FF", TrackCount = "2 track", Duration = "0:58" },
         new() { Name = "Kapanış", Color = "#FF60A0", TrackCount = "1 track", Duration = "0:20" },
     ];
+
+    public TrackListViewModel()
+    {
+        SeedPlaceholders();
+    }
+
+    /// <summary>
+    /// Move the track at <paramref name="fromIdx"/> to <paramref name="toIdx"/>
+    /// and renumber every track's <see cref="ITrackViewModel.Order"/> so the
+    /// sequence stays contiguous 0..N-1. The observable collection's own
+    /// Move event drives the UI repaint.
+    /// </summary>
+    public void Reorder(int fromIdx, int toIdx)
+    {
+        if (fromIdx == toIdx) return;
+        if (fromIdx < 0 || fromIdx >= Tracks.Count) return;
+        if (toIdx   < 0 || toIdx   >= Tracks.Count) return;
+
+        Tracks.Move(fromIdx, toIdx);
+
+        for (int i = 0; i < Tracks.Count; i++)
+            Tracks[i].Order = (byte)i;
+    }
+
+    /// <summary>
+    /// Append a fresh empty track. Id is assigned monotonically from
+    /// <c>Tracks.Count</c>; colour cycles the palette. Name is a localised
+    /// placeholder the user is expected to rename via the track header
+    /// (double-click rename is a future concern). No blocks are seeded —
+    /// the track starts empty and the user draws into it.
+    /// </summary>
+    public void AddTrack()
+    {
+        var idx     = Tracks.Count;
+        var palette = NewTrackPalette[idx % NewTrackPalette.Length];
+
+        var track = new Track
+        {
+            Id      = idx,
+            Name    = $"Track {idx + 1}",
+            Color   = palette.color,
+            BlockBg = palette.bg,
+        };
+        var vm = new TrackViewModel(track) { Order = (byte)idx };
+        Tracks.Add(vm);
+    }
+
+    /// <summary>
+    /// Remove a track (and all its blocks). No-op if the track is not in
+    /// the collection. Does not re-id remaining tracks — Id is stable per
+    /// track for its lifetime; only <see cref="ITrackViewModel.Order"/> is
+    /// renumbered to keep the sequence contiguous.
+    /// </summary>
+    public void RemoveTrack(ITrackViewModel track)
+    {
+        if (!Tracks.Remove(track)) return;
+        for (int i = 0; i < Tracks.Count; i++)
+            Tracks[i].Order = (byte)i;
+    }
+
+    // ── Placeholder seeding ──────────────────────────────────────────────
+    // Temporary until real project load replaces this. Kept inline because
+    // there is no real persistence pipeline to plug into yet.
+
+    private void SeedPlaceholders()
+    {
+        var placeholders = new Track[]
+        {
+            new() { Id = 0, Name = "Narrator",   Color = "#7C6AF7", BlockBg = "#2A2560" },
+            new() { Id = 1, Name = "Karakter A", Color = "#60AAFF", BlockBg = "#1A3A5C" },
+            new() { Id = 2, Name = "Karakter B", Color = "#FF60A0", BlockBg = "#3A1A3A" },
+        };
+
+        byte orderCounter = 0;
+        foreach (var track in placeholders)
+        {
+            var vm = new TrackViewModel(track) { Order = orderCounter++ };
+
+            if (track.Id == 0)
+            {
+                // Narrator — two blocks spanning opening and Chapter I intro.
+                vm.Sections.Add(new SectionViewModel
+                {
+                    Label       = "Narrator · Giriş metni…",
+                    Bg          = track.BlockBg,
+                    AccentColor = track.Color,
+                    StartSec    = 0.5,
+                    DurationSec = 5,
+                    Emotion     = 15,
+                    Dirty       = false,
+                });
+                vm.Sections.Add(new SectionViewModel
+                {
+                    Label       = "Narrator · Bölüm I açılışı…",
+                    Bg          = track.BlockBg,
+                    AccentColor = track.Color,
+                    StartSec    = 12,
+                    DurationSec = 9,
+                    Emotion     = 20,
+                    Dirty       = false,
+                });
+            }
+            else if (track.Id == 1)
+            {
+                vm.Sections.Add(new SectionViewModel
+                {
+                    Label       = "Karakter A · Dialog…",
+                    Bg          = track.BlockBg,
+                    AccentColor = track.Color,
+                    StartSec    = 6.5,
+                    DurationSec = 5.5,
+                    Emotion     = 75,
+                    Dirty       = true,
+                });
+            }
+            else if (track.Id == 2)
+            {
+                vm.Sections.Add(new SectionViewModel
+                {
+                    Label       = "Karakter B · Cevap…",
+                    Bg          = track.BlockBg,
+                    AccentColor = track.Color,
+                    StartSec    = 17,
+                    DurationSec = 6,
+                    Emotion     = 60,
+                    Dirty       = false,
+                });
+            }
+
+            Tracks.Add(vm);
+        }
+    }
 }

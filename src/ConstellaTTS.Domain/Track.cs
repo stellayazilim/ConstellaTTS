@@ -21,6 +21,15 @@ public class Track
     /// <summary>Track color on the timeline (hex string).</summary>
     public string Color { get; set; } = "#7c6af7";
 
+    /// <summary>
+    /// Dark tinted block background for sections/stages on this track
+    /// (hex string). Kept alongside <see cref="Color"/> so the accent and
+    /// fill palette is owned by the track itself — no external mapping,
+    /// no runtime computation. New blocks created on this row inherit
+    /// this value.
+    /// </summary>
+    public string BlockBg { get; set; } = "#2A2560";
+
     /// <summary>Whether the track is expanded in the UI.</summary>
     public bool Expanded { get; set; } = true;
 

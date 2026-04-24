@@ -11,6 +11,8 @@ using ConstellaTTS.Core.Sound;
 using ConstellaTTS.Core.Theme;
 using ConstellaTTS.Core.UI.Infrastructure;
 using ConstellaTTS.Core.UI.Regions;
+using ConstellaTTS.Core.UI.Selection;
+using ConstellaTTS.Core.UI.Tools;
 using ConstellaTTS.Core.ViewModels;
 using ConstellaTTS.Core.Views;
 using ConstellaTTS.Core.Windows;
@@ -19,9 +21,12 @@ using ConstellaTTS.SDK.Exceptions;
 using ConstellaTTS.SDK.History;
 using ConstellaTTS.SDK.IPC;
 using ConstellaTTS.SDK.Theme;
+using ConstellaTTS.SDK.Timeline;
 using ConstellaTTS.SDK.UI.Keybinds;
 using ConstellaTTS.SDK.UI.Navigation;
 using ConstellaTTS.SDK.UI.Regions;
+using ConstellaTTS.SDK.UI.Selection;
+using ConstellaTTS.SDK.UI.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -82,27 +87,40 @@ public sealed class ConstellaTTSCoreModule : IConstellaModule
             return new IPCClient(python, daemon, loggerFactory);
         });
 
-        // ── Managers ──────────────────────────────────────────────────────
-        services.AddSingleton<ProjectManager>();
-
         // ── ViewModels ────────────────────────────────────────────────────
+        services.AddSingleton<IToolModeService,   ToolModeService>();
+        services.AddSingleton<ISelectionService,  SelectionService>();
+        services.AddSingleton<ITimelineViewport>(_ => TimelineViewport.Current);
         services.AddSingleton<TrackListViewModel>();
+        services.AddSingleton<ContextBarViewModel>();
         services.AddSingleton<SampleLibraryViewModel>();
         services.AddSingleton<MainWindowViewModel>();
+        services.AddSingleton<DawToolbarViewModel>();
 
         // ── Views ─────────────────────────────────────────────────────────
         services.AddSingleton<SampleLibraryView>();
         services.AddSingleton<StatusBarView>();
         services.AddSingleton<ContextBarView>(sp =>
         {
-            var vm   = sp.GetRequiredService<TrackListViewModel>();
-            var view = new ContextBarView { DataContext = vm.ContextBar };
+            var vm   = sp.GetRequiredService<ContextBarViewModel>();
+            var view = new ContextBarView { DataContext = vm };
             return view;
         });
         services.AddSingleton<TrackListView>(sp =>
         {
-            var vm   = sp.GetRequiredService<TrackListViewModel>();
-            var view = new TrackListView { DataContext = vm };
+            var vm            = sp.GetRequiredService<TrackListViewModel>();
+            var toolMode      = sp.GetRequiredService<IToolModeService>();
+            var viewport      = sp.GetRequiredService<ITimelineViewport>();
+            var history       = sp.GetRequiredService<IHistoryManager>();
+            var selection     = sp.GetRequiredService<ISelectionService>();
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+            var view          = new TrackListView(toolMode, viewport, history, selection, loggerFactory) { DataContext = vm };
+            return view;
+        });
+        services.AddSingleton<DawToolbarView>(sp =>
+        {
+            var vm   = sp.GetRequiredService<DawToolbarViewModel>();
+            var view = new DawToolbarView { DataContext = vm };
             return view;
         });
 
@@ -119,9 +137,7 @@ public sealed class ConstellaTTSCoreModule : IConstellaModule
         // ── Actions ───────────────────────────────────────────────────────
         services.AddSingleton<ToggleSoundBankAction>();
         services.AddSingleton<UndoLastAction>();
-
-        // ── Views (test) ──────────────────────────────────────────────────
-        services.AddSingleton<TestToolbarView>();
+        services.AddSingleton<RedoLastAction>();
 
         // ── Bootstrap ─────────────────────────────────────────────────────
         services.AddTransient<IConstellaBootstrap, ConstellaBootstrap>();
@@ -132,6 +148,7 @@ public sealed class ConstellaTTSCoreModule : IConstellaModule
             var kb = sp.GetRequiredService<IKeybindManager>();
             kb.Register(sp.GetRequiredService<ToggleSoundBankAction>());
             kb.Register(sp.GetRequiredService<UndoLastAction>());
+            kb.Register(sp.GetRequiredService<RedoLastAction>());
 
             // Track flyout window for keybinds
             kb.TrackWindow(sp.GetRequiredService<SampleLibraryWindow>());

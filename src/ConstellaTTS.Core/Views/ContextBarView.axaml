@@ -4,17 +4,72 @@
              x:Class="ConstellaTTS.Core.Views.ContextBarView"
              x:DataType="vm:ContextBarViewModel">
 
-    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
 
-        <!-- Create / Select / Stage mod butonları -->
-        <Button Grid.Column="0" Classes="mode-btn active">Create</Button>
-        <Button Grid.Column="1" Classes="mode-btn">Select</Button>
-        <Button Grid.Column="2" Classes="mode-btn">Stage</Button>
+        <!-- Primary tool radio: Select / Create -->
+        <Button Grid.Column="0"
+                Classes="mode-btn"
+                Classes.active="{Binding IsSelectTool}"
+                Command="{Binding ActivateSelectCommand}"
+                ToolTip.Tip="Select (V)">
+            Select
+        </Button>
+        <Button Grid.Column="1"
+                Classes="mode-btn"
+                Classes.active="{Binding IsCreateTool}"
+                Command="{Binding ActivateCreateCommand}"
+                ToolTip.Tip="Create (B)">
+            Create
+        </Button>
 
-        <Border Grid.Column="3" Classes="g-separator-v" Margin="8,8" />
+        <!-- Subtle inline divider between primary and sub-radio.
+             Hidden when the sub-radio is, so Select mode doesn't show a
+             divider with nothing after it. -->
+        <Border Grid.Column="2"
+                Classes="g-separator-v"
+                Margin="6,8"
+                IsVisible="{Binding IsSubTypeVisible}" />
+
+        <!-- Sub-type radio: Section / Stage. Only surfaces while Create
+             is the active (or previewed) tool — in Select mode these
+             buttons have no effect and would be misleading clutter. -->
+        <Button Grid.Column="3"
+                Classes="mode-btn"
+                Classes.active="{Binding IsSection}"
+                IsVisible="{Binding IsSubTypeVisible}"
+                Command="{Binding SelectSectionCommand}"
+                ToolTip.Tip="Section (Ctrl+drag)">
+            Section
+        </Button>
+        <Button Grid.Column="4"
+                Classes="mode-btn"
+                Classes.active="{Binding IsStage}"
+                IsVisible="{Binding IsSubTypeVisible}"
+                Command="{Binding SelectStageCommand}"
+                ToolTip.Tip="Stage (Ctrl+Shift+drag)">
+            Stage
+        </Button>
+
+        <!-- Delete button — Select mode + block selected. Separator
+             + button fade in together so the toolbar doesn't shift
+             underneath the user's eye when selection changes. -->
+        <Border Grid.Column="5"
+                Classes="g-separator-v"
+                Margin="6,8"
+                IsVisible="{Binding IsDeleteVisible}" />
+        <Button Grid.Column="6"
+                Classes="mode-btn"
+                IsVisible="{Binding IsDeleteVisible}"
+                Command="{Binding DeleteSelectionCommand}"
+                ToolTip.Tip="Seçili bloğu sil (Del)"
+                Foreground="{DynamicResource StatusDanger}">
+            Delete
+        </Button>
+
+        <Border Grid.Column="7" Classes="g-separator-v" Margin="8,8" />
 
         <!-- Aktif section özeti -->
-        <TextBlock Grid.Column="4"
+        <TextBlock Grid.Column="8"
                    Text="{Binding SectionLabel}"
                    FontSize="11"
                    FontWeight="Medium"
@@ -22,12 +77,23 @@
                    VerticalAlignment="Center" />
 
         <!-- Hints — sağa yaslanır -->
-        <TextBlock Grid.Column="6"
+        <TextBlock Grid.Column="9"
                    Text="{Binding Hints}"
                    FontSize="10"
                    Foreground="{DynamicResource FgMuted}"
                    VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,8,0"
                    Opacity="0.6" />
+
+        <!-- Add track — always available. Sits at the far right so it
+             doesn't shift when the delete button appears. -->
+        <Button Grid.Column="10"
+                Classes="mode-btn"
+                Command="{Binding AddTrackCommand}"
+                ToolTip.Tip="Yeni track ekle">
+            + Track
+        </Button>
 
     </Grid>
 

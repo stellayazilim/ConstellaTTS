@@ -12,68 +12,102 @@
         x:DataType="viewModel:MainWindowViewModel"
         Background="{StaticResource BgBase}"
         WindowDecorations="None"
-        ExtendClientAreaToDecorationsHint="False"
-        xmlns:i="clr-namespace:Avalonia.Xaml.Interactivity;assembly=Avalonia.Xaml.Interactivity"
-        xmlns:ia="clr-namespace:Avalonia.Xaml.Interactions.Core;assembly=Avalonia.Xaml.Interactions">
+        ExtendClientAreaToDecorationsHint="False" >
 
-    <Interaction.Behaviors>
-        <EventTriggerBehavior EventName="PointerMoved">
-            <InvokeCommandAction Command="{Binding PointerCommand}" PassEventArgsToCommand="True"/>
-        </EventTriggerBehavior>
-    </Interaction.Behaviors>
+    <!-- Outer 2px border — visible window frame, since OS chrome is off. -->
+    <Border BorderBrush="{StaticResource BorderSubtle}"
+            BorderThickness="2">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 3×3 resize-grip grid. Edge/corner cells are transparent hit
+             zones that call BeginResizeDrag via code-behind. Centre cell
+             holds the actual app content. -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="4" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="4" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="4" />
+            </Grid.ColumnDefinitions>
 
-        <!-- Row 0: Title Bar -->
-        <Border Grid.Row="0"
-                Background="{StaticResource BgRibbon}"
-                BorderBrush="{StaticResource BorderSubtle}"
-                BorderThickness="0,0,0,1"
-                Height="32"
-                IsHitTestVisible="True">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Border Grid.Column="0" Width="8" IsHitTestVisible="False" />
-                <Panel Grid.Column="1">
-                    <Border x:Name="TitleBarDragArea" Background="Transparent" IsHitTestVisible="True" />
-                    <Menu Background="Transparent"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Center"
-                          FontSize="12"
-                          Margin="0,4">
-                        <MenuItem Header="File" />
-                        <MenuItem Header="Edit" />
-                        <MenuItem Header="View" />
-                        <MenuItem Header="Help" />
-                    </Menu>
-                </Panel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Stretch">
-                    <Button x:Name="MinimizeBtn" Width="40" Height="32" Padding="0"
-                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                            Background="Transparent" BorderThickness="0"
-                            Foreground="{StaticResource FgSecondary}">
-                        <TextBlock Text="&#x2014;" FontSize="10" VerticalAlignment="Center" />
-                    </Button>
-                    <Button x:Name="MaximizeBtn" Width="40" Height="32" Padding="0"
-                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                            Background="Transparent" BorderThickness="0"
-                            Foreground="{StaticResource FgSecondary}">
-                        <TextBlock Text="&#x25A1;" FontSize="10" VerticalAlignment="Center" />
-                    </Button>
-                    <Button x:Name="CloseBtn" Width="40" Height="32" Padding="0"
-                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                            Background="Transparent" BorderThickness="0"
-                            Foreground="{StaticResource FgSecondary}">
-                        <TextBlock Text="&#x2715;" FontSize="11" VerticalAlignment="Center" />
-                    </Button>
-                </StackPanel>
+            <!-- ── Content (centre cell) ─────────────────────────────── -->
+            <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto">
+
+                <!-- Row 0: Title Bar -->
+                <Border Grid.Row="0"
+                        Background="{StaticResource BgRibbon}"
+                        BorderBrush="{StaticResource BorderSubtle}"
+                        BorderThickness="0,0,0,1"
+                        Height="32"
+                        IsHitTestVisible="True">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Border Grid.Column="0" Width="8" IsHitTestVisible="False" />
+                        <Panel Grid.Column="1">
+                            <Border x:Name="TitleBarDragArea" Background="Transparent" IsHitTestVisible="True" />
+                            <Menu Background="Transparent"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  FontSize="12"
+                                  Margin="0,4">
+                                <MenuItem Header="File" />
+                                <MenuItem Header="Edit" />
+                                <MenuItem Header="View" />
+                                <MenuItem Header="Help" />
+                            </Menu>
+                        </Panel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Stretch">
+                            <Button x:Name="MinimizeBtn" Width="40" Height="32" Padding="0"
+                                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{StaticResource FgSecondary}">
+                                <TextBlock Text="&#x2014;" FontSize="10" VerticalAlignment="Center" />
+                            </Button>
+                            <Button x:Name="MaximizeBtn" Width="40" Height="32" Padding="0"
+                                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{StaticResource FgSecondary}">
+                                <TextBlock Text="&#x25A1;" FontSize="10" VerticalAlignment="Center" />
+                            </Button>
+                            <Button x:Name="CloseBtn" Width="40" Height="32" Padding="0"
+                                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{StaticResource FgSecondary}">
+                                <TextBlock Text="&#x2715;" FontSize="11" VerticalAlignment="Center" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Row 1: Layout region -->
+                <regions:RegionControl Grid.Row="1" RegionId="MainWindow.Layout" />
+
+                <!-- Row 2: Status bar region -->
+                <regions:RegionControl Grid.Row="2" RegionId="MainWindow.StatusBar" />
+
             </Grid>
-        </Border>
 
-        <!-- Row 1: Layout region -->
-        <regions:RegionControl Grid.Row="1" RegionId="MainWindow.Layout" />
+            <!-- ── Resize grips (transparent hit zones) ──────────────── -->
+            <Border x:Name="ResizeNW" Grid.Row="0" Grid.Column="0"
+                    Background="Transparent" Cursor="TopLeftCorner" />
+            <Border x:Name="ResizeN"  Grid.Row="0" Grid.Column="1"
+                    Background="Transparent" Cursor="TopSide" />
+            <Border x:Name="ResizeNE" Grid.Row="0" Grid.Column="2"
+                    Background="Transparent" Cursor="TopRightCorner" />
 
-        <!-- Row 2: Status bar region -->
-        <regions:RegionControl Grid.Row="2" RegionId="MainWindow.StatusBar" />
+            <Border x:Name="ResizeW"  Grid.Row="1" Grid.Column="0"
+                    Background="Transparent" Cursor="LeftSide" />
+            <Border x:Name="ResizeE"  Grid.Row="1" Grid.Column="2"
+                    Background="Transparent" Cursor="RightSide" />
 
-    </Grid>
+            <Border x:Name="ResizeSW" Grid.Row="2" Grid.Column="0"
+                    Background="Transparent" Cursor="BottomLeftCorner" />
+            <Border x:Name="ResizeS"  Grid.Row="2" Grid.Column="1"
+                    Background="Transparent" Cursor="BottomSide" />
+            <Border x:Name="ResizeSE" Grid.Row="2" Grid.Column="2"
+                    Background="Transparent" Cursor="BottomRightCorner" />
+        </Grid>
+    </Border>
 </Window>

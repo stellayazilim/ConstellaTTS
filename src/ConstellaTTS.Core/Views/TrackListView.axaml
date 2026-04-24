@@ -1,8 +1,27 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ConstellaTTS.Core.ViewModels"
+             xmlns:sdk="using:ConstellaTTS.SDK"
+             xmlns:timeline="using:ConstellaTTS.SDK.Timeline"
+             xmlns:tconv="using:ConstellaTTS.Core.UI.Timeline"
+             xmlns:views="using:ConstellaTTS.Core.Views"
              x:Class="ConstellaTTS.Core.Views.TrackListView"
              x:DataType="vm:TrackListViewModel">
+
+    <UserControl.Styles>
+        <!-- Fade the in-list row while its VM is being dragged;
+             the floating preview represents it during the drag. -->
+        <Style Selector="Border.track-row">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.track-row.drag-ghost">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+    </UserControl.Styles>
 
     <Grid RowDefinitions="32,*,52">
 
@@ -25,34 +44,11 @@
                                LetterSpacing="2"
                                Foreground="{DynamicResource FgMuted}" />
                 </Border>
-                <Border Grid.Column="1">
-                    <Grid ColumnDefinitions="*,*,*,*,*,*,*,*">
-                        <Border Grid.Column="0" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="0 s"  FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="1" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="4 s"  FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="2" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="8 s"  FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="3" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="12 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="4" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="16 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="5" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="20 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="6" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,1,0">
-                            <TextBlock Text="24 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                        <Border Grid.Column="7">
-                            <TextBlock Text="28 s" FontSize="10" Foreground="{DynamicResource RulerText}" VerticalAlignment="Center" Margin="8,0" />
-                        </Border>
-                    </Grid>
-                </Border>
+                <!-- Dynamic ruler — self-drawing control that reads the
+                     timeline viewport (pxPerSec, scrollOffsetSec) and
+                     repaints ticks at the current zoom level. Replaces
+                     the old hardcoded 0–28s grid. -->
+                <views:TimelineRulerControl Grid.Column="1" />
             </Grid>
         </Border>
 
@@ -72,10 +68,13 @@
                 <ItemsControl x:Name="TracksControl"
                               ItemsSource="{Binding Tracks}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:TrackViewModel">
+                        <DataTemplate x:DataType="sdk:ITrackViewModel">
 
-                            <!-- Outer border — indicator border burası, track rengiyle boyanır -->
-                            <Border BorderBrush="{Binding IndicatorBrush}"
+                            <!-- Outer border — indicator border burası, track rengiyle boyanır.
+                                 Classes "track-row" + "drag-ghost" fade etmeyi idare eder. -->
+                            <Border Classes="track-row"
+                                    Classes.drag-ghost="{Binding IsDragging}"
+                                    BorderBrush="{Binding IndicatorBrush}"
                                     BorderThickness="{Binding IndicatorBorderThickness}">
                                 <Border BorderBrush="{DynamicResource BorderSubtle}"
                                         BorderThickness="0,0,0,1"
@@ -102,38 +101,113 @@
                                             </Grid>
                                         </Border>
 
-                                        <!-- Sağ: Clip canvas -->
-                                        <Canvas Grid.Column="1"
-                                                Background="{DynamicResource BgTrack}"
-                                                ClipToBounds="True">
+                                        <!-- Sağ: Clip surface for timeline blocks.
+                                             Panel (not Canvas) at outer level so the inner
+                                             ItemsControl gets stretched to the full track
+                                             width — Canvas would leave it at DesiredSize (0x0)
+                                             and clip everything. -->
+                                        <Panel Grid.Column="1"
+                                               Background="{DynamicResource BgTrack}"
+                                               ClipToBounds="True">
                                             <ItemsControl ItemsSource="{Binding Sections}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
                                                         <Canvas />
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate x:DataType="vm:DummySectionViewModel">
-                                                        <Canvas Width="{Binding WidthPx}"
-                                                                Height="36"
-                                                                Canvas.Left="{Binding LeftPx}"
-                                                                Canvas.Top="10">
-                                                            <Border Width="{Binding WidthPx}"
-                                                                    Height="36"
-                                                                    CornerRadius="3"
-                                                                    Background="{Binding Color}"
-                                                                    Opacity="0.15">
+
+                                                <!-- CRITICAL: Position the ContentPresenter (the actual
+                                                     container Canvas sees as its child), NOT the DataTemplate
+                                                     root. Setting Canvas.Left inside the DataTemplate ends up
+                                                     on an inner element the outer Canvas doesn't look at, so
+                                                     every item stacks at (0, 0). ItemContainerTheme targets
+                                                     the container itself, and Canvas reads the attached
+                                                     property from there. -->
+                                                <ItemsControl.ItemContainerTheme>
+                                                    <ControlTheme TargetType="ContentPresenter">
+                                                        <Setter Property="Canvas.Top" Value="4" />
+                                                        <Setter Property="Canvas.Left">
+                                                            <Setter.Value>
+                                                                <!-- x:DataType on the item binding — the outer scope's
+                                                                     compiled x:DataType is ITrackViewModel (the Track),
+                                                                     but each container's DataContext is actually an
+                                                                     IStageViewModel (a block). Without this hint the
+                                                                     compiler tries to resolve StartSec on the wrong type
+                                                                     and fails at build time. -->
+                                                                <MultiBinding Converter="{x:Static tconv:TimelineConverters.TimeToPx}">
+                                                                    <Binding Path="StartSec" x:DataType="sdk:IStageViewModel" />
+                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="PxPerSec" />
+                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="ScrollOffsetSec" />
+                                                                </MultiBinding>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </ControlTheme>
+                                                </ItemsControl.ItemContainerTheme>
+
+                                                <ItemsControl.DataTemplates>
+
+                                                    <!-- Section — TTS block with emotion + dirty indicators.
+                                                         Width is projected from DurationSec; positioning (Canvas.Left)
+                                                         lives on the ContentPresenter via ItemContainerTheme above. -->
+                                                    <DataTemplate DataType="sdk:ISectionViewModel">
+                                                        <Border Height="48"
+                                                                CornerRadius="3"
+                                                                Background="{Binding Bg}"
+                                                                ClipToBounds="True">
+                                                            <Border.Width>
+                                                                <MultiBinding Converter="{x:Static tconv:TimelineConverters.DurationToPx}">
+                                                                    <Binding Path="DurationSec" />
+                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="PxPerSec" />
+                                                                </MultiBinding>
+                                                            </Border.Width>
+                                                            <Grid>
+                                                                <!-- Dirty indicator: 3px yellow strip on left edge -->
+                                                                <Border HorizontalAlignment="Left"
+                                                                        Width="3"
+                                                                        Background="{DynamicResource StatusWarning}"
+                                                                        IsVisible="{Binding Dirty}" />
+                                                                <!-- Emotion indicator: 3px gradient strip on bottom edge -->
+                                                                <Border VerticalAlignment="Bottom"
+                                                                        Height="3"
+                                                                        Background="{StaticResource Gradient-Emotion}" />
+                                                                <!-- Label -->
                                                                 <TextBlock Text="{Binding Label}"
                                                                            FontSize="10"
                                                                            VerticalAlignment="Center"
                                                                            Margin="8,0"
-                                                                           Foreground="{DynamicResource FgPrimary}" />
-                                                            </Border>
-                                                        </Canvas>
+                                                                           Foreground="{Binding AccentColor}" />
+                                                            </Grid>
+                                                        </Border>
                                                     </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
+
+                                                    <!-- Stage — visual annotation with no TTS pipeline.
+                                                         Dashed outline + italic centered label. -->
+                                                    <DataTemplate DataType="sdk:IStageViewModel">
+                                                        <Grid Height="48">
+                                                            <Grid.Width>
+                                                                <MultiBinding Converter="{x:Static tconv:TimelineConverters.DurationToPx}">
+                                                                    <Binding Path="DurationSec" />
+                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="PxPerSec" />
+                                                                </MultiBinding>
+                                                            </Grid.Width>
+                                                            <Rectangle RadiusX="3" RadiusY="3"
+                                                                       Fill="{Binding Bg}"
+                                                                       Stroke="{Binding AccentColor}"
+                                                                       StrokeThickness="1"
+                                                                       StrokeDashArray="4,3"
+                                                                       Opacity="0.6" />
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       FontSize="10"
+                                                                       FontStyle="Italic"
+                                                                       VerticalAlignment="Center"
+                                                                       HorizontalAlignment="Center"
+                                                                       Foreground="{Binding AccentColor}" />
+                                                        </Grid>
+                                                    </DataTemplate>
+
+                                                </ItemsControl.DataTemplates>
                                             </ItemsControl>
-                                        </Canvas>
+                                        </Panel>
 
                                     </Grid>
                                 </Border>
@@ -143,6 +217,148 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+
+            <!-- Drag preview — floating cursor-attached header.
+                 Hit-test invisible so it can't swallow pointer events. -->
+            <Border x:Name="DragPreview"
+                    IsHitTestVisible="False"
+                    IsVisible="False"
+                    Width="200"
+                    Height="56"
+                    Background="{DynamicResource BgElevated}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="1"
+                    BoxShadow="0 8 24 0 #80000000"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Opacity="0.92">
+                <Grid ColumnDefinitions="4,*">
+                    <Border x:Name="DragPreviewAccent" Grid.Column="0" />
+                    <TextBlock x:Name="DragPreviewLabel" Grid.Column="1"
+                               Margin="10,0"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               FontWeight="Medium"
+                               Foreground="{DynamicResource FgPrimary}" />
+                </Grid>
+            </Border>
+
+            <!-- Create-gesture preview — rectangle drawn while the user
+                 drags in Create mode. Hit-test invisible so pointer events
+                 reach the track row underneath. Positioning is driven
+                 imperatively from code-behind via Margin + Width; the
+                 child TextBlock shows live duration so the user can size
+                 the block to a specific length without watching a remote
+                 toolbar. -->
+            <Border x:Name="CreatePreview"
+                    IsHitTestVisible="False"
+                    IsVisible="False"
+                    Height="48"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    CornerRadius="3"
+                    BorderThickness="2"
+                    Opacity="0.85"
+                    ClipToBounds="True">
+                <TextBlock x:Name="CreatePreviewDurationText"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           FontFamily="{DynamicResource FontMono}"
+                           Foreground="{DynamicResource FgPrimary}" />
+            </Border>
+
+            <!-- Block editor overlay — opens when a block is selected. Floats
+                 above the tracks panel, anchored to the block's position.
+                 Positioning (Margin) is imperative from code-behind against
+                 the current viewport; content fields are also set from
+                 code-behind so binding lifetime doesn't fight the overlay
+                 open/close cycle.
+                 Is HIT-TEST visible (interactive) — clicks inside the
+                 overlay shouldn't fall through to the track canvas and
+                 start a create gesture. -->
+            <Border x:Name="BlockEditor"
+                    IsVisible="False"
+                    Width="360"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="{DynamicResource BgElevated}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="10,8"
+                    BoxShadow="0 12 40 0 #D0000000">
+                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+                    <!-- Row 0: meta chips + close button -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                            <Border x:Name="BlockEditorDurationChip"
+                                    Background="{DynamicResource BgRibbon}"
+                                    BorderBrush="{DynamicResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Padding="6,1">
+                                <TextBlock x:Name="BlockEditorDurationText"
+                                           FontSize="10"
+                                           FontFamily="{DynamicResource FontMono}" />
+                            </Border>
+                            <Border Background="{DynamicResource BgRibbon}"
+                                    BorderBrush="{DynamicResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Padding="6,1">
+                                <TextBlock x:Name="BlockEditorStartText"
+                                           FontSize="10"
+                                           FontFamily="{DynamicResource FontMono}"
+                                           Foreground="{DynamicResource FgMuted}" />
+                            </Border>
+                            <Border Background="{DynamicResource BgRibbon}"
+                                    BorderBrush="{DynamicResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Padding="6,1">
+                                <TextBlock x:Name="BlockEditorEndText"
+                                           FontSize="10"
+                                           FontFamily="{DynamicResource FontMono}"
+                                           Foreground="{DynamicResource FgMuted}" />
+                            </Border>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                x:Name="BlockEditorCloseButton"
+                                Content="✕"
+                                Width="20" Height="20"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{DynamicResource FgMuted}"
+                                FontSize="11" />
+                    </Grid>
+
+                    <!-- Row 1: block type / label display (shows character hint,
+                         editable in v2) -->
+                    <TextBlock Grid.Row="1"
+                               x:Name="BlockEditorKindText"
+                               FontSize="10"
+                               FontWeight="Medium"
+                               Foreground="{DynamicResource FgSecondary}"
+                               LetterSpacing="0.5" />
+
+                    <!-- Row 2: label text — editable, two-way bound to
+                         SelectedBlock.Label via code-behind so mutations
+                         echo into the track row labels as the user types. -->
+                    <TextBox Grid.Row="2"
+                             x:Name="BlockEditorLabelText"
+                             MinHeight="80"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             FontSize="11"
+                             Background="{DynamicResource BgBase}"
+                             BorderBrush="{DynamicResource BorderMid}"
+                             BorderThickness="1"
+                             CornerRadius="4"
+                             Padding="7,5"
+                             Foreground="{DynamicResource FgPrimary}" />
+                </Grid>
+            </Border>
 
         </Panel>
 
@@ -166,7 +382,7 @@
                                Foreground="{DynamicResource FgMuted}" />
                 </Border>
                 <Border Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
-                <Canvas Grid.Column="2" Background="Transparent" />
+                <views:TimelineMinimapControl x:Name="Minimap" Grid.Column="2" />
             </Grid>
         </Border>
 
