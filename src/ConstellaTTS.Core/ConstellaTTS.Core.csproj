@@ -19,6 +19,17 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
         <PackageReference Include="Xaml.Behaviors" Version="12.0.0" />
+
+        <!-- Audio import. NAudio reads everything Windows Media
+             Foundation does (mp3, m4a, wma, aac, wav, aiff). NAudio.Flac
+             writes the lossless FLAC output the sample library stores.
+             Pure C# / managed pipeline — no ffmpeg binary to bundle, no
+             Process.Start to babysit. Note: NAudio is Windows-specific
+             (relies on MF). Cross-platform support is a follow-up; the
+             ISampleImporter interface keeps room for swapping the
+             implementation later. -->
+        <PackageReference Include="NAudio" Version="2.2.1" />
+        <PackageReference Include="NAudio.Flac" Version="1.0.5702.29018" />
     </ItemGroup>
 
     <ItemGroup>

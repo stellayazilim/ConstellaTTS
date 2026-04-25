@@ -1,136 +1,150 @@
-using System;
-using System.Collections.Generic;
+
 using System.ComponentModel;
-using System.Linq;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ConstellaTTS.Core.Actions;
-using ConstellaTTS.Core.Logging;
+using ConstellaTTS.Core.Misc.Logging;
 using ConstellaTTS.Core.ViewModels;
-using ConstellaTTS.SDK;
+using ConstellaTTS.Core.Windows;
+using ConstellaTTS.Domain;
+using ConstellaTTS.SDK.Engine;
 using ConstellaTTS.SDK.History;
 using ConstellaTTS.SDK.Timeline;
 using ConstellaTTS.SDK.UI.Animation;
 using ConstellaTTS.SDK.UI.Selection;
 using ConstellaTTS.SDK.UI.Tools;
+using ConstellaTTS.SDK.ViewModelContracts;
 using Microsoft.Extensions.Logging;
 
 namespace ConstellaTTS.Core.Views;
 
 /// <summary>
-/// Track list + timeline view. Handles two drag gestures over a single
-/// pointer capture, dispatched in OnPressed based on where and how the
-/// press happened:
+/// Track list + timeline view. Dispatches three pointer gestures from one
+/// capture based on press location and tool mode:
 ///
 ///   · REORDER — press on the left 200 px header of any row. Floating
-///     cursor-attached preview + three-stage release animation. Always
+///     cursor-attached preview + 3-stage release animation. Always
 ///     available regardless of tool mode.
 ///
-///   · CREATE — press on the canvas area (X ≥ 200 px) with the Create
-///     tool active, or while holding Ctrl (= Section) / Ctrl+Shift
-///     (= Stage) as a transient override from Select mode. Paints a
-///     preview rectangle; on release creates a Section or Stage block
-///     on the hit track and appends it to that track's collection.
+///   · CREATE — press on the canvas area (X ≥ 200 px) with Create tool
+///     active, or while holding Ctrl (= Section) / Ctrl+Shift (= Stage)
+///     as a transient override from Select mode. Paints a preview
+///     rectangle; on release creates a block and appends it.
 ///
-///   · SELECT — press on the canvas with Select tool active and no
-///     Ctrl override. Hit-tests against the track's blocks; on hit
-///     selects (editor opens via selection observer), on miss clears.
-///     No drag.
+///   · SELECT — press on canvas with Select tool, no Ctrl. Hit-tests
+///     blocks on the row; on hit selects, on miss clears. Header
+///     click in Select mode (no drag) selects the track itself,
+///     driving the Delete button's "delete track" mode.
 ///
-/// Block geometry lives in the time domain (StartSec / DurationSec).
-/// Pixel coords are viewport projections — convert at the gesture
-/// boundary and store only time on the VM. Collision is checked in
-/// the time domain against existing blocks on the same track, so
-/// clamp logic is zoom-independent.
+/// Track header also supports right-click → inline rename (IsEditing
+/// flag flips TextBlock↔TextBox; LostFocus / Enter commit, Escape
+/// reverts to the pre-edit name).
 ///
-/// Ctrl-preview: while the pointer hovers the canvas AND Ctrl is held,
-/// this view writes PreviewTool=Create / PreviewCreateType={Section|Stage}
-/// to IToolModeService. The context bar's buttons bind to EffectiveTool/
-/// CreateType and light up accordingly without actually committing the
-/// mode change. Clearing happens on pointer leave or when the modifier
-/// goes away during a move.
+/// Block geometry is time-domain (StartSec / DurationSec); pixels are
+/// viewport projections computed at the gesture boundary.
 /// </summary>
 public partial class TrackListView : UserControl
 {
     private const int    RowHeight         = 56;
     private const int    HeaderWidth       = 200;
     private const int    DragThresholdPx   = 5;
-    private const double MinCreateDurSec   = 0.2; // reject drags shorter than 200 ms
+    private const double MinCreateDurSec   = 0.2;
 
-    // Cursor-anchored zoom tuning.
     private const double ZoomFactorPerNotch = 1.15;
     private const double MinPxPerSec        = 4;
     private const double MaxPxPerSec        = 400;
+    private const double ScrollStepSec      = 2;
 
-    // Shift+Scroll horizontal time-scroll: seconds advanced per unit of
-    // wheel delta. Tuned so one physical notch (~1.0) steps about 2 s.
-    private const double ScrollStepSec = 2;
-
-    // Reorder animation tuning — short, sequential-phase feel.
     private static readonly TimeSpan CloseSourceDuration = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan OpenTargetDuration  = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan FadeInDuration      = TimeSpan.FromMilliseconds(180);
 
     private enum DragKind { None, Reorder, Create }
 
-    private readonly IToolModeService  _toolMode;
-    private readonly ITimelineViewport _viewport;
-    private readonly IHistoryManager   _history;
-    private readonly ISelectionService _selection;
-    private readonly ILogger           _log;
+    private readonly IToolModeService          _toolMode;
+    private readonly ITimelineViewport         _viewport;
+    private readonly IHistoryManager           _history;
+    private readonly ISelectionService         _selection;
+    private readonly IEngineCatalog            _engineCatalog;
+    private readonly IViewportHistoryRecorder  _viewportRecorder;
+    private readonly ILogger                   _log;
 
-    // Shared drag state
     private DragKind _dragKind;
     private bool     _isDragging;
     private bool     _isAnimating;
     private Point    _dragStart;
 
-    // Reorder-specific
     private ITrackViewModel? _dragging;
     private double           _clickOffsetY;
 
-    // Create-specific (time domain)
     private ITrackViewModel? _createTrack;
     private int              _createTrackIdx;
     private double           _createAnchorSec;
     private CreateType       _createType;
     private double           _createClampMinSec;
 
-    // Re-entry guard for OnCaptureLost vs OnReleased's Capture(null).
     private bool _inReleaseHandler;
 
-    // Cached last pointer position in items-coord space, kept in sync by
-    // OnMoved and invalidated on OnPointerExited. Consumed by the key
-    // listener so a Ctrl press (no cursor movement) can re-evaluate the
-    // tool preview using the cursor's current location — otherwise the
-    // preview would only light up after the user wiggled the mouse.
-    private Point? _lastPointerInItems;
-
-    // TopLevel we're currently subscribed to for global key events. Stored
-    // so we can detach the same instance we attached to; if the control is
-    // ever re-parented across windows the pair stays consistent.
+    private Point?   _lastPointerInItems;
     private TopLevel? _keyListenerTopLevel;
 
+    // Inline rename snapshot so Escape can revert to the pre-edit name.
+    // Two-way binding writes straight into Name as the user types, so
+    // without this Escape would keep whatever partial value was there.
+    private (ITrackViewModel track, string name)? _renameSnapshot;
+
     public TrackListView(
-        IToolModeService  toolMode,
-        ITimelineViewport viewport,
-        IHistoryManager   history,
-        ISelectionService selection,
-        ILoggerFactory    loggerFactory)
+        IToolModeService          toolMode,
+        ITimelineViewport         viewport,
+        IHistoryManager           history,
+        ISelectionService         selection,
+        IEngineCatalog            engineCatalog,
+        IViewportHistoryRecorder  viewportRecorder,
+        ILoggerFactory            loggerFactory)
     {
-        _toolMode  = toolMode;
-        _viewport  = viewport;
-        _history   = history;
-        _selection = selection;
-        _log       = loggerFactory.CreateLogger(LogCategory.WindowProcess);
+        _toolMode         = toolMode;
+        _viewport         = viewport;
+        _history          = history;
+        _selection        = selection;
+        _engineCatalog    = engineCatalog;
+        _viewportRecorder = viewportRecorder;
+        _log              = loggerFactory.CreateLogger(LogCategory.WindowProcess);
         InitializeComponent();
         Setup();
     }
 
     private TrackListViewModel? Vm => DataContext as TrackListViewModel;
+
+    /// <summary>
+    /// Apply a selection change through the history stack. Captures the
+    /// current (track, block) pair as the "from" state, the requested
+    /// pair as the "to" state, and pushes a <see cref="SelectAction"/>.
+    /// Consecutive selection changes collapse into one undo entry via
+    /// the action's IMergeable implementation, so a click-fest leaves
+    /// just one Ctrl+Z step pointing back at the selection the user
+    /// had before they started.
+    ///
+    /// No-ops if the new pair equals the current one — keeps the undo
+    /// stack from growing during transient re-selects (e.g. clicking
+    /// the same block again).
+    /// </summary>
+    private void ApplySelection(ITrackViewModel? toTrack, IStageViewModel? toBlock)
+    {
+        var fromTrack = _selection.SelectedTrack;
+        var fromBlock = _selection.SelectedBlock;
+
+        if (ReferenceEquals(fromTrack, toTrack) && ReferenceEquals(fromBlock, toBlock))
+            return;
+
+        var action = new SelectAction(_selection, fromTrack, fromBlock, toTrack, toBlock);
+        action.Execute();
+        _history.Push(action);
+    }
 
     private void Setup()
     {
@@ -144,21 +158,34 @@ public partial class TrackListView : UserControl
         _selection.PropertyChanged += OnSelectionChanged;
         _viewport.PropertyChanged  += OnViewportChanged;
 
-        BlockEditorCloseButton.Click     += (_, _) => CloseBlockEditor();
+        BlockEditorCloseButton.Click     += (_, _) => ApplySelection(null, null);
         BlockEditorLabelText.TextChanged += OnBlockEditorLabelChanged;
+
+        // Section-only controls. The dropdown's items are populated once
+        // here — the catalog is static for this session and the SelectedItem
+        // is reassigned from RefreshBlockEditor as the user picks blocks.
+        EngineCombo.ItemsSource          = _engineCatalog.Engines;
+        EngineCombo.DisplayMemberBinding = new Avalonia.Data.Binding(nameof(EngineDescriptor.DisplayName));
+        EngineCombo.SelectionChanged    += OnEngineComboChanged;
+
+        // Seed advance mode dropdown — a fixed enum, populated once.
+        // Strategy fires AFTER each successful generation, so it doesn't
+        // change the displayed seed until the user actually generates.
+        SeedModeCombo.ItemsSource       = System.Enum.GetValues<SeedAdvanceMode>();
+        SeedModeCombo.SelectionChanged += OnSeedModeChanged;
+
+        SamplePickerButton.Click       += OnSamplePickerClick;
+        EmotionSlider.ValueChanged     += OnEmotionSliderChanged;
+        TemperatureSlider.ValueChanged += OnTemperatureSliderChanged;
+        SeedDecrementButton.Click      += (_, _) => StepSeed(-1);
+        SeedIncrementButton.Click      += (_, _) => StepSeed(+1);
+        SeedRandomizeButton.Click      += OnSeedRandomizeClick;
+        GenerateButton.Click           += OnGenerateClick;
 
         DataContextChanged += (_, _) => BindMinimap();
         BindMinimap();
     }
 
-    /// <summary>
-    /// Hook global key events from the owning <see cref="TopLevel"/> so
-    /// Ctrl presses re-evaluate the Ctrl-preview even when the user hasn't
-    /// wiggled the mouse. UserControls don't reliably receive keyboard
-    /// focus, so listening at the window level is the straightforward
-    /// path — the alternative (keeping focus here) would fight with
-    /// TextBox focus inside the block editor.
-    /// </summary>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -175,6 +202,13 @@ public partial class TrackListView : UserControl
     {
         base.OnDetachedFromVisualTree(e);
 
+        // Flush any pending scroll session so its history entry isn't
+        // lost when the view detaches mid-burst (e.g. project reload,
+        // tab switch). The recorder is a singleton shared with the
+        // minimap; flushing here closes whichever input source's
+        // session was open at detach time.
+        _viewportRecorder.Flush();
+
         if (_keyListenerTopLevel is not null)
         {
             _keyListenerTopLevel.KeyDown -= OnKeyStateChanged;
@@ -183,13 +217,6 @@ public partial class TrackListView : UserControl
         }
     }
 
-    /// <summary>
-    /// Reacts to Ctrl / Shift transitions by re-running the preview logic
-    /// against the cached pointer position. No cached position (pointer
-    /// outside the view) → nothing to preview, skip. Non-modifier keys are
-    /// ignored; we don't want Alt / Tab / letter keys spuriously clearing
-    /// the preview.
-    /// </summary>
     private void OnKeyStateChanged(object? sender, KeyEventArgs e)
     {
         if (e.Key is not (Key.LeftCtrl or Key.RightCtrl
@@ -203,11 +230,25 @@ public partial class TrackListView : UserControl
     private void BindMinimap()
     {
         Minimap?.SetTracks(Vm?.Tracks);
+        // Pass the shared recorder to the minimap so its pan and
+        // select-range gestures contribute to the same coalesced undo
+        // session as the track-canvas wheel handler. Idempotent if the
+        // tracks collection rebinds without the recorder changing.
+        Minimap?.SetViewportRecorder(_viewportRecorder);
     }
 
     // ── Block editor overlay ─────────────────────────────────────────────
 
     private bool _suppressLabelEcho;
+
+    /// <summary>
+    /// True while RefreshBlockEditor is pushing VM values into the
+    /// section-only controls. All section-control change handlers
+    /// short-circuit while this is set to break the VM→UI→VM echo that
+    /// would otherwise oscillate when a freshly-selected block's values
+    /// land in Slider/TextBox/ComboBox and immediately fire ValueChanged.
+    /// </summary>
+    private bool _suppressSectionEcho;
 
     private void OnSelectionChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -216,8 +257,15 @@ public partial class TrackListView : UserControl
 
     private void OnViewportChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!BlockEditor.IsVisible) return;
-        PositionBlockEditor();
+        // Reposition / reopen the editor whenever the viewport moves.
+        // We can't bail when the editor is currently hidden — it might
+        // need to come back into view because the user (or a Ctrl+Z
+        // ViewportChangeAction) just scrolled the selected block back
+        // into the visible range. RefreshBlockEditor handles both cases:
+        // it shows + repositions the editor when the block is in view,
+        // and quietly hides it when it isn't.
+        if (_selection.SelectedBlock is null) return;
+        RefreshBlockEditor();
     }
 
     private void RefreshBlockEditor()
@@ -225,6 +273,8 @@ public partial class TrackListView : UserControl
         var block = _selection.SelectedBlock;
         var track = _selection.SelectedTrack;
 
+        // Editor only opens for block selection; track-only selection is
+        // handled separately by the context bar's Delete-track button.
         if (block is null || track is null)
         {
             BlockEditor.IsVisible = false;
@@ -237,35 +287,81 @@ public partial class TrackListView : UserControl
         BlockEditorDurationText.Text = $"⏱ {FormatDuration(block.DurationSec)}";
         BlockEditorStartText.Text    = $"▶ {FormatDuration(block.StartSec)}";
         BlockEditorEndText.Text      = $"⏹ {FormatDuration(block.EndSec)}";
-        BlockEditorKindText.Text     = block is ISectionViewModel
-            ? "SECTION · " + track.Name.ToUpperInvariant()
-            : "STAGE · "   + track.Name.ToUpperInvariant();
 
         _suppressLabelEcho        = true;
         BlockEditorLabelText.Text = block.Label;
         _suppressLabelEcho        = false;
 
+        // Section-only chip strip elements (sample, seed) and the engine
+        // combo + slider footer all toggle together. Stage blocks just
+        // get duration/start/end + label + close button — no engine
+        // wiring, no sample binding.
+        var isSection = block is ISectionViewModel;
+        SamplePickerButton.IsVisible = isSection;
+        SeedRow.IsVisible            = isSection;
+        EngineCombo.IsVisible        = isSection;
+        SectionOnlyPanel.IsVisible   = isSection;
+
+        if (block is ISectionViewModel section)
+            PushSectionValuesToUi(section);
+
         PositionBlockEditor();
     }
 
     /// <summary>
-    /// Anchor the editor to the selected block's time position. Three
-    /// clamping rules, applied in order:
-    ///
-    ///   1. Block fully off-screen (end before viewport start, or start
-    ///      past viewport end) → close the editor. The "collapse on
-    ///      hit" behaviour Kerim asked for — scrolling the block out
-    ///      of view dismisses the overlay rather than dragging it along
-    ///      with some out-of-sight anchor.
-    ///
-    ///   2. Right spill — editor would extend past the tracks panel's
-    ///      right edge → pull left so the whole editor stays visible.
-    ///
-    ///   3. Left spill — editor's left edge would land inside the left
-    ///      header column → push right so the editor never covers the
-    ///      track name panel. Without this clamp, scrolling right made
-    ///      the editor creep over the header area.
+    /// Push the section's current values into the editor controls. Wraps
+    /// the writes in <see cref="_suppressSectionEcho"/> so the change
+    /// handlers don't bounce them straight back into the VM.
     /// </summary>
+    private void PushSectionValuesToUi(ISectionViewModel section)
+    {
+        _suppressSectionEcho = true;
+        try
+        {
+            EngineCombo.SelectedItem = string.IsNullOrEmpty(section.EngineId)
+                ? null
+                : _engineCatalog.Find(section.EngineId);
+
+            EmotionSlider.Value   = section.Emotion;
+            EmotionValueText.Text = section.Emotion.ToString();
+
+            TemperatureSlider.Value   = section.Temperature;
+            TemperatureValueText.Text = section.Temperature.ToString("0.0");
+
+            SeedValueText.Text = FormatSeed(section.Seed);
+            SeedModeCombo.SelectedItem = section.SeedMode;
+
+            SamplePickerLabel.Text = section.VoiceSample is { } s
+                ? FormatSampleLabel(s)
+                : "None";
+        }
+        finally
+        {
+            _suppressSectionEcho = false;
+        }
+    }
+
+    /// <summary>
+    /// Render a seed value for the chip's text slot. The chip used to
+    /// show "auto" for 0, but the advance-mode dropdown now owns that
+    /// semantic (Random / Fixed / etc. determine what happens between
+    /// renders), so the chip is plain numeric. 0 stays as "0" — a
+    /// legitimate user-selectable value, not a special placeholder.
+    /// </summary>
+    private static string FormatSeed(int seed) => seed.ToString();
+
+    /// <summary>
+    /// Render a Sample as a short pickable label — the trailing path
+    /// segment is enough to recognise it without overflowing the button.
+    /// </summary>
+    private static string FormatSampleLabel(Sample sample)
+    {
+        var path = sample.RawAudioPath;
+        if (string.IsNullOrEmpty(path)) return $"Sample {sample.Id.ToString()[..8]}";
+        var slash = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
+        return slash >= 0 ? path[(slash + 1)..] : path;
+    }
+
     private void PositionBlockEditor()
     {
         var track = _selection.SelectedTrack;
@@ -281,14 +377,18 @@ public partial class TrackListView : UserControl
         var items = this.FindControl<ItemsControl>("TracksControl");
         if (items is null) return;
 
-        // (1) Viewport-bounds check. Close if the block has scrolled off.
         var available  = items.Bounds.Width;
         var visibleSec = (available - HeaderWidth) / Math.Max(0.001, _viewport.PxPerSec);
         var viewStart  = _viewport.ScrollOffsetSec;
         var viewEnd    = viewStart + visibleSec;
         if (block.EndSec < viewStart || block.StartSec > viewEnd)
         {
-            CloseBlockEditor();
+            // Block has scrolled outside the visible viewport — just hide
+            // the overlay; don't clear the selection. The user might scroll
+            // back, in which case we want the editor to reopen seamlessly
+            // rather than the selection being silently dropped (which would
+            // also pollute the undo stack with a SelectAction every scroll).
+            BlockEditor.IsVisible = false;
             return;
         }
 
@@ -296,12 +396,8 @@ public partial class TrackListView : UserControl
         var topPx  = trackIdx * RowHeight + RowHeight;
 
         const double EditorWidth = 360;
-
-        // (2) Right clamp.
         if (leftPx + EditorWidth > available)
             leftPx = available - EditorWidth - 8;
-
-        // (3) Left clamp — never overlap the track-header column.
         if (leftPx < HeaderWidth + 8)
             leftPx = HeaderWidth + 8;
 
@@ -314,36 +410,191 @@ public partial class TrackListView : UserControl
         var block = _selection.SelectedBlock;
         if (block is null) return;
         block.Label = BlockEditorLabelText.Text ?? string.Empty;
+        if (block is ISectionViewModel section) section.Dirty = true;
+    }
+
+    // ── Section-only handlers ───────────────────────────────────────────────
+    //
+    // Each handler:
+    //   1. Bails if echo is suppressed (RefreshBlockEditor is pushing).
+    //   2. Bails if the selection isn't a section — the controls are
+    //      hidden in that case but events can still fire transiently
+    //      while the selection switches.
+    //   3. Writes the new value to the VM and flips Dirty=true so the
+    //      block's left-edge yellow strip lights up.
+
+    private void OnEngineComboChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSectionEcho) return;
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+
+        var picked = EngineCombo.SelectedItem as EngineDescriptor;
+        section.EngineId = picked?.Id ?? string.Empty;
+        section.Dirty    = true;
+    }
+
+    private void OnEmotionSliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_suppressSectionEcho) return;
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+
+        var value = (int)Math.Round(e.NewValue);
+        section.Emotion       = value;
+        section.Dirty         = true;
+        EmotionValueText.Text = value.ToString();
+    }
+
+    private void OnTemperatureSliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_suppressSectionEcho) return;
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+
+        // Round to one decimal so the value chip and the VM stay consistent
+        // (avoids 0.7000000000001 noise from the underlying double slider).
+        var value = Math.Round(e.NewValue, 1);
+        section.Temperature       = value;
+        section.Dirty             = true;
+        TemperatureValueText.Text = value.ToString("0.0");
+    }
+
+    /// <summary>
+    /// Adjust seed by a step. Clamped at 0 (auto) on the low end so
+    /// pressing ◀ past zero just lands on "auto" rather than going
+    /// negative. No upper clamp — ints are large enough that the user
+    /// can't realistically reach the limit by clicking.
+    /// </summary>
+    private void StepSeed(int delta)
+    {
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+
+        var next = Math.Max(0, section.Seed + delta);
+        section.Seed       = next;
+        section.Dirty      = true;
+        SeedValueText.Text = FormatSeed(next);
+    }
+
+    private void OnSeedRandomizeClick(object? sender, RoutedEventArgs e)
+    {
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+
+        // Pick from the positive int range so the seed never lands on 0
+        // (which means "auto"). System.Random is fine here — we don't
+        // need cryptographic-quality randomness for an RNG seed.
+        var seed = Random.Shared.Next(1, int.MaxValue);
+        section.Seed       = seed;
+        section.Dirty      = true;
+        SeedValueText.Text = FormatSeed(seed);
+    }
+
+    private void OnSeedModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSectionEcho) return;
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+        if (SeedModeCombo.SelectedItem is not SeedAdvanceMode picked) return;
+
+        section.SeedMode = picked;
+        section.Dirty    = true;
+    }
+
+    /// <summary>
+    /// Apply the section's <see cref="SeedAdvanceMode"/> after a
+    /// successful generation. Called from <see cref="OnGenerateClick"/>
+    /// once the engine returns audio; isolated so future automation
+    /// (the listen-while-generating toggle) can call it too without
+    /// duplicating the policy logic.
+    /// </summary>
+    private void AdvanceSeed(ISectionViewModel section)
+    {
+        var next = section.SeedMode switch
+        {
+            SeedAdvanceMode.Fixed     => section.Seed,
+            SeedAdvanceMode.Increment => section.Seed + 1,
+            SeedAdvanceMode.Decrement => Math.Max(0, section.Seed - 1),
+            SeedAdvanceMode.Random    => Random.Shared.Next(1, int.MaxValue),
+            _                         => section.Seed,
+        };
+        if (next == section.Seed) return;
+
+        section.Seed = next;
+        SeedValueText.Text = FormatSeed(next);
+    }
+
+    private void OnGenerateClick(object? sender, RoutedEventArgs e)
+    {
+        // Hook for the TTS pipeline. Today this is a no-op: the IPC daemon
+        // wiring is in place but no real engine adapter exists yet, so
+        // there's nothing to actually generate against. Logging the click
+        // is enough until the first adapter lands — then this becomes a
+        // call into the IIPCService with the section's parameter bundle.
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+        _log.LogInformation(
+            "[GENERATE] engine={Engine} seed={Seed} mode={Mode} emotion={Emotion} temp={Temp:F1} sample={Sample}",
+            section.EngineId, section.Seed, section.SeedMode, section.Emotion, section.Temperature,
+            section.VoiceSample?.RawAudioPath ?? "(none)");
+
+        // Apply the post-generation seed strategy. In Fixed mode this is
+        // a no-op; the other modes nudge the seed so the next render
+        // produces a fresh take without the user having to touch the
+        // chip manually.
+        AdvanceSeed(section);
+    }
+
+    private void OnSamplePickerClick(object? sender, RoutedEventArgs e)
+    {
+        // For now, cycle through the available samples on each click as a
+        // minimum-viable picker. Replacing this with a popup or modal
+        // window listing samples is a follow-up turn — the wiring (VM
+        // field, label refresh) is already in place.
+        if (_selection.SelectedBlock is not ISectionViewModel section) return;
+     
+   
+
+        var current = section.VoiceSample;
+
+
+        section.Dirty          = true;
     }
 
     private void CloseBlockEditor()
     {
+        // Direct selection clear without history — used by tear-down paths
+        // where pushing a SelectAction would be incorrect (e.g. detaching
+        // the view, project reload). User-initiated dismissal goes through
+        // ApplySelection(null, null) so it lands on the undo stack.
         _selection.SelectedBlock = null;
         _selection.SelectedTrack = null;
     }
 
     /// <summary>
-    /// Hit-test a point (in this UserControl's coord space) against the
-    /// currently-open block editor overlay. Used to veto canvas gestures
-    /// that would otherwise fire from events bubbling out of the editor —
-    /// a Ctrl+click on an editor text box shouldn't start a create
-    /// gesture, and an empty-space click inside the editor shouldn't
-    /// clear selection and close the editor out from under the user.
+    /// True if <paramref name="posInTrackListView"/> falls inside the
+    /// block editor overlay's bounds. The overlay lives in the inner
+    /// <c>Panel</c> (Grid.Row=1), so its <c>Bounds</c> are relative to
+    /// that panel — not the outer UserControl. Without translating, the
+    /// top-edge offset of every other ancestor row (32 px ruler today,
+    /// plus any future chrome) shifts the comparison and clicks on
+    /// neighbouring tracks register as "inside the editor" and get
+    /// swallowed. Translating the editor's top-left into TrackListView
+    /// coordinates with <see cref="Visual.TranslatePoint"/> normalises
+    /// the comparison so the hit zone matches what the user actually
+    /// sees on screen.
     /// </summary>
     private bool IsInsideBlockEditor(Point posInTrackListView)
     {
         if (!BlockEditor.IsVisible) return false;
+
+        var topLeftInSelf = BlockEditor.TranslatePoint(new Point(0, 0), this);
+        if (topLeftInSelf is null) return false;
+
         var b = BlockEditor.Bounds;
-        return posInTrackListView.X >= b.Left && posInTrackListView.X <= b.Right
-            && posInTrackListView.Y >= b.Top  && posInTrackListView.Y <= b.Bottom;
+        var left   = topLeftInSelf.Value.X;
+        var top    = topLeftInSelf.Value.Y;
+        var right  = left + b.Width;
+        var bottom = top  + b.Height;
+
+        return posInTrackListView.X >= left && posInTrackListView.X <= right
+            && posInTrackListView.Y >= top  && posInTrackListView.Y <= bottom;
     }
 
-    /// <summary>
-    /// Returns (track, block) at the given items-coord point. Track is
-    /// non-null whenever the Y coord lands inside a valid row; block is
-    /// non-null only when the X coord also lands inside an existing
-    /// block's [StartSec, EndSec] span.
-    /// </summary>
     private (ITrackViewModel? track, IStageViewModel? block) HitBlock(Point posInItems)
     {
         var tracks = Vm?.Tracks;
@@ -374,14 +625,6 @@ public partial class TrackListView : UserControl
         Reset();
     }
 
-    /// <summary>
-    /// Pointer left the control — any active Ctrl-preview override is
-    /// now stale. Clearing here is required because PointerMoved stops
-    /// firing once the pointer is outside, so the preview would stick
-    /// on until the user re-entered. The cached pointer position is also
-    /// invalidated so a Ctrl press outside the canvas doesn't light the
-    /// preview on a stale coordinate.
-    /// </summary>
     private void OnPointerExited(object? sender, PointerEventArgs e)
     {
         _lastPointerInItems = null;
@@ -390,12 +633,6 @@ public partial class TrackListView : UserControl
 
     // ── Wheel ────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Routes mouse-wheel input based on modifier keys.
-    ///   • Ctrl  → zoom the timeline, anchored at the pointer.
-    ///   • Shift → unhandled; ScrollViewer does the vertical track scroll.
-    ///   • None  → horizontal time-scroll (DAW convention).
-    /// </summary>
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
         var items = this.FindControl<ItemsControl>("TracksControl");
@@ -407,6 +644,15 @@ public partial class TrackListView : UserControl
         var ctrl  = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
+        // Open / extend a viewport-history session. The recorder
+        // snapshots the FROM viewport state on the first Touch of a
+        // burst and pushes a single ViewportChangeAction once the
+        // user has paused for the settle threshold. Same recorder is
+        // shared with the minimap, so a wheel-burst here followed by
+        // a minimap drag both contribute to the user's scroll history
+        // through the same coalescing path.
+        _viewportRecorder.Touch();
+
         if (ctrl)
         {
             ApplyZoomAtCursor(pos, e.Delta.Y);
@@ -414,7 +660,7 @@ public partial class TrackListView : UserControl
             return;
         }
 
-        if (shift) return; // let ScrollViewer do vertical scroll
+        if (shift) return;
 
         var newOffset = _viewport.ScrollOffsetSec - (e.Delta.Y * ScrollStepSec);
         _viewport.ScrollOffsetSec = Math.Max(0, newOffset);
@@ -437,16 +683,6 @@ public partial class TrackListView : UserControl
 
     // ── Tool preview (Ctrl hover) ────────────────────────────────────────
 
-    /// <summary>
-    /// Sync the tool-mode preview with (cursor location, modifiers). Only
-    /// the canvas area (items X ≥ HeaderWidth, Y within tracks) counts —
-    /// hovering the left header column, minimap, or toolbar doesn't
-    /// pre-light the create buttons.
-    ///
-    /// Idempotent: writes null→null without raising spurious change
-    /// notifications thanks to the service's ObservableProperty equality
-    /// check.
-    /// </summary>
     private void UpdateToolPreview(Point posInItems, KeyModifiers modifiers)
     {
         var inCanvas = posInItems.X >= HeaderWidth
@@ -460,8 +696,6 @@ public partial class TrackListView : UserControl
             return;
         }
 
-        // Committed mode is already Create — no need to preview something
-        // that's already the real state. Leaves sub-type untouched.
         if (_toolMode.Tool == ToolMode.Create)
         {
             _toolMode.PreviewTool       = null;
@@ -505,10 +739,6 @@ public partial class TrackListView : UserControl
             return;
         }
 
-        // The block editor is a modal-ish overlay — pointer work inside it
-        // (TextBox focus, close button, meta chips) must not leak into
-        // canvas gestures, and a click inside the editor area must not be
-        // treated as "empty space" that clears selection.
         if (IsInsideBlockEditor(rawPos))
         {
             _log.LogDebug("[PRESS-EXIT] reason=inside-block-editor");
@@ -539,12 +769,10 @@ public partial class TrackListView : UserControl
         var trackIdx = (int)(pos.Y / RowHeight);
         if (trackIdx < 0 || trackIdx >= tracks.Count)
         {
-            // Below the last track row. If the editor is open, close it —
-            // the "click outside" dismiss affordance. Otherwise dead space.
-            if (BlockEditor.IsVisible)
+            if (_selection.SelectedBlock is not null || _selection.SelectedTrack is not null)
             {
-                _log.LogDebug("[PRESS-EMPTY] closing block editor (below tracks)");
-                CloseBlockEditor();
+                _log.LogDebug("[PRESS-EMPTY] clearing selection (below tracks)");
+                ApplySelection(null, null);
             }
             _log.LogDebug($"[PRESS-EXIT] reason=trackIdx-oob idx={trackIdx} count={tracks.Count}");
             return;
@@ -552,7 +780,7 @@ public partial class TrackListView : UserControl
 
         var track = tracks[trackIdx];
 
-        // Left 200 px — reorder gesture.
+        // Left 200 px — reorder gesture press.
         if (pos.X >= 0 && pos.X < HeaderWidth)
         {
             _dragKind     = DragKind.Reorder;
@@ -568,33 +796,25 @@ public partial class TrackListView : UserControl
             return;
         }
 
-        // Canvas press. Three possibilities based on tool + modifiers:
-        //   (1) Ctrl / Ctrl+Shift       → create gesture (override)
-        //   (2) Create tool active      → create gesture (normal)
-        //   (3) Select tool, no Ctrl    → click-to-select / click-to-clear
+        // Canvas press: create gesture or click-select.
         var resolved = ResolveCreateType(e.KeyModifiers);
         if (resolved is null)
         {
-            // Select-mode pick gesture. Hit-test against blocks on the row.
             var (_, hitBlock) = HitBlock(pos);
             if (hitBlock is not null)
             {
                 _log.LogDebug($"[PRESS-SELECT] hit '{hitBlock.Label}' on '{track.Name}'");
-                _selection.SelectedTrack = track;
-                _selection.SelectedBlock = hitBlock;
+                ApplySelection(track, hitBlock);
             }
             else
             {
                 _log.LogDebug("[PRESS-SELECT] miss — clearing selection");
-                CloseBlockEditor();
+                ApplySelection(null, null);
             }
             e.Handled = true;
             return;
         }
 
-        // Create gesture. Snap the anchor past any block it lands inside so
-        // the drag starts growing from the block's EndSec instead of being
-        // rejected. Blocks further right get bumped at commit.
         var canvasX   = pos.X - HeaderWidth;
         var anchorSec = _viewport.PxToTime(canvasX);
 
@@ -633,15 +853,11 @@ public partial class TrackListView : UserControl
         var pos = e.GetPosition(items);
         _lastPointerInItems = pos;
 
-        // Update tool preview even during idle hovering. Cheap — the
-        // service short-circuits identical writes — but gives instant
-        // feedback when the user presses/releases Ctrl over the canvas.
         if (_dragKind == DragKind.None)
             UpdateToolPreview(pos, e.KeyModifiers);
 
         if (_dragKind == DragKind.None || _isAnimating) return;
 
-        // Click-vs-drag disambiguation — same threshold for both paths.
         if (!_isDragging)
         {
             var dx = pos.X - _dragStart.X;
@@ -680,6 +896,18 @@ public partial class TrackListView : UserControl
             if (!_isDragging)
             {
                 _log.LogDebug("[RELEASE-CLICK] no drag past threshold, cancelling");
+
+                // Click on track header (Reorder gesture, no motion) in Select
+                // mode → promote to a track selection. This mirrors the block
+                // click-to-select flow: same Delete button, different target.
+                if (_dragKind == DragKind.Reorder
+                    && _dragging is not null
+                    && _toolMode.Tool == ToolMode.Select)
+                {
+                    _log.LogDebug($"[SELECT-TRACK] track={_dragging.Name}");
+                    ApplySelection(_dragging, null);
+                }
+
                 EndReorderVisuals();
                 ClearCreateVisuals();
                 Reset();
@@ -701,13 +929,6 @@ public partial class TrackListView : UserControl
 
     // ── Create gesture ───────────────────────────────────────────────────
 
-    /// <summary>
-    /// Decide whether a press should start a create gesture.
-    ///   · Ctrl          → Section (override)
-    ///   · Ctrl + Shift  → Stage   (override)
-    ///   · Tool == Create → service's CreateType
-    ///   · Otherwise     → null
-    /// </summary>
     private CreateType? ResolveCreateType(KeyModifiers modifiers)
     {
         if (modifiers.HasFlag(KeyModifiers.Control))
@@ -969,6 +1190,132 @@ public partial class TrackListView : UserControl
             t.DropIndicator  = DropIndicator.None;
             t.IndicatorBrush = null;
         }
+    }
+
+    // ── Track-header actions: add / rename ───────────────────────────────
+
+    /// <summary>
+    /// Open the Add Track dialog and, on confirm, append a new track with
+    /// the user's chosen name. Default pre-fills to "Track N" so a quick
+    /// Enter accepts a reasonable placeholder — but the user can type
+    /// anything before confirming.
+    /// </summary>
+    private async void OnAddTrackClick(object? sender, RoutedEventArgs e)
+    {
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        if (owner is null || Vm is null) return;
+
+        var defaultName = $"Track {Vm.Tracks.Count + 1}";
+        var name = await AddTrackDialog.ShowAsync(owner, defaultName);
+        if (name is null) return;
+
+        Vm.AddTrack(name);
+    }
+
+    /// <summary>
+    /// Right-click on a track header → flip the row into rename mode
+    /// (alternative entry point alongside double-click).
+    /// Left-click falls through to OnPressed and starts a reorder gesture
+    /// (which is further promoted to a track-select in OnReleased if the
+    /// user didn't actually drag, and the current tool is Select).
+    ///
+    /// Focus and select-all are deferred via <see cref="Dispatcher"/>
+    /// because the TextBox IsVisible flips in the same tick — the
+    /// TextBox has to finish layout before it can receive focus.
+    /// </summary>
+    private void OnTrackHeaderPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control ctrl) return;
+        if (ctrl.DataContext is not ITrackViewModel track) return;
+
+        var props = e.GetCurrentPoint(ctrl).Properties;
+        if (!props.IsRightButtonPressed) return;
+
+        BeginInlineRename(ctrl, track);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Double-click on a track header → inline rename. Mirrors the
+    /// way file-explorer-style UIs let the user rename a row by
+    /// double-clicking its label, and matches Kerim's earlier
+    /// expectation that the existing right-click affordance was a
+    /// fallback rather than the primary path. Left single click is
+    /// still reorder-or-select; double-click escalates to rename.
+    ///
+    /// Avalonia's <c>DoubleTapped</c> fires after the second pointer
+    /// release, so the first PointerPressed has already started a
+    /// reorder gesture. We don't try to undo that — the user hasn't
+    /// moved past the drag threshold so the gesture is harmless and
+    /// the next OnReleased will end it cleanly.
+    /// </summary>
+    private void OnTrackHeaderDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Control ctrl) return;
+        if (ctrl.DataContext is not ITrackViewModel track) return;
+
+        BeginInlineRename(ctrl, track);
+        e.Handled = true;
+    }
+
+    private void BeginInlineRename(Control header, ITrackViewModel track)
+    {
+        _renameSnapshot = (track, track.Name);
+        track.IsEditing = true;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            var textBox = header.GetVisualDescendants()
+                                .OfType<TextBox>()
+                                .FirstOrDefault();
+            if (textBox is not null)
+            {
+                textBox.Focus();
+                textBox.SelectAll();
+            }
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void OnTrackRenameLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox tb) return;
+        if (tb.DataContext is not ITrackViewModel track) return;
+
+        // LostFocus = commit. Two-way binding already pushed the final
+        // value into Name; just exit edit mode.
+        CommitRename(track);
+    }
+
+    private void OnTrackRenameKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox tb) return;
+        if (tb.DataContext is not ITrackViewModel track) return;
+
+        if (e.Key == Key.Enter)
+        {
+            CommitRename(track);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            // Revert: two-way binding has been pushing characters into
+            // Name as the user typed, so restore the pre-edit snapshot.
+            if (_renameSnapshot is var (snapTrack, snapName) && snapTrack == track)
+                track.Name = snapName;
+            CommitRename(track);
+            e.Handled = true;
+        }
+    }
+
+    private void CommitRename(ITrackViewModel track)
+    {
+        // Empty rename collapses back to a placeholder rather than leaving
+        // an invisible-label track lying around.
+        if (string.IsNullOrWhiteSpace(track.Name))
+            track.Name = "Track";
+
+        track.IsEditing = false;
+        _renameSnapshot = null;
     }
 
     // ── Shared helpers ───────────────────────────────────────────────────

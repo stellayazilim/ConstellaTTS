@@ -269,6 +269,73 @@
         <Setter Property="Background" Value="#33F87171" />
     </Style>
 
+    <!-- Accent: standard "go-ahead" affirmative button. The neon-violet
+         glow signals "yes, do this" without the alarm-bell red of
+         danger. Used for dialog confirms (Add Track "Ekle", Save, etc.)
+         where the action is a normal commit, not destructive.
+
+         Owns its own template (like mode-btn / section-item) for two
+         reasons:
+           1. Fluent's default Button template paints :isDefault buttons
+              with the system accent (red on Windows by default), and
+              that pseudo-class wins over a plain Background setter on
+              the Button itself.
+           2. BoxShadow attaches to the Border, not the Button — we want
+              a soft violet halo as the emissive cue, and that has to
+              live on a named element we control.
+
+         The :isDefault selector is included so even if a future caller
+         sets IsDefault="True" the system accent doesn't sneak back in. -->
+    <Style Selector="Button.ctts.accent">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontFamily" Value="DM Sans,Segoe UI,sans-serif" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="#FFFFFF" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="Button">
+                <Border x:Name="AccentRoot"
+                        Background="{DynamicResource AccentPurple}"
+                        BorderBrush="#9b8aff"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        BoxShadow="0 0 14 0 #807C6AF7"
+                        Padding="{TemplateBinding Padding}">
+                    <Border.Transitions>
+                        <Transitions>
+                            <BrushTransition  Property="Background" Duration="0:0:0.1" />
+                            <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.15" />
+                        </Transitions>
+                    </Border.Transitions>
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.ctts.accent:pointerover /template/ Border#AccentRoot">
+        <Setter Property="Background" Value="#8b7af9" />
+        <Setter Property="BoxShadow" Value="0 0 22 0 #B07C6AF7" />
+    </Style>
+    <Style Selector="Button.ctts.accent:pressed /template/ Border#AccentRoot">
+        <Setter Property="Background" Value="#6a58e0" />
+        <Setter Property="BoxShadow" Value="0 0 8 0 #607C6AF7" />
+        <Setter Property="RenderTransform">
+            <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+        </Setter>
+    </Style>
+    <!-- Defensive override: even if someone sets IsDefault="True" the
+         visual stays accent-violet, not system-red. -->
+    <Style Selector="Button.ctts.accent:isDefault /template/ Border#AccentRoot">
+        <Setter Property="Background" Value="{DynamicResource AccentPurple}" />
+    </Style>
+
 
     <!-- ══════════════════════════════
          MODE BUTTON
@@ -414,6 +481,40 @@
         <Setter Property="FontFamily" Value="JetBrains Mono,Cascadia Code,Consolas,monospace" />
         <Setter Property="FontSize" Value="10" />
         <Setter Property="Padding" Value="10,5" />
+    </Style>
+
+    <!-- Global TextBox focus override.
+         Applies to every TextBox — with or without the .ctts class —
+         so dialogs that just drop in <TextBox> (rename inline, Add Track
+         dialog, etc.) get the neon-violet ring instead of Avalonia's
+         default reddish system accent. The default focus colour reads
+         as "validation error" in our dark palette; this swaps it for
+         the brand colour so focus is unambiguously "this is active",
+         not "this is wrong".
+
+         The selectors below cover the three places Avalonia paints the
+         focus chrome:
+           1. The control itself (BorderBrush) on :focus / :focus-within.
+           2. PART_BorderElement inside the default template (this is
+              the actual rendered border on Fluent's TextBox; setting it
+              on the control alone leaves the inner element untouched).
+           3. The PART_BorderElement's :focus / :pointerover transitions
+              so hover and focus both stay on-brand.
+
+         All four point at AccentPurple so they read as one decision. -->
+    <Style Selector="TextBox">
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentPurple}" />
+        <Setter Property="SelectionBrush" Value="#557C6AF7" />
+        <Setter Property="SelectionForegroundBrush" Value="{DynamicResource FgPrimary}" />
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentPurple}" />
+    </Style>
+    <Style Selector="TextBox:focus-within /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentPurple}" />
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="#9b8aff" />
     </Style>
 
 

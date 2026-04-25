@@ -1,14 +1,24 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ConstellaTTS.Core.ViewModels"
-             xmlns:sdk="using:ConstellaTTS.SDK"
              xmlns:timeline="using:ConstellaTTS.SDK.Timeline"
-             xmlns:tconv="using:ConstellaTTS.Core.UI.Timeline"
-             xmlns:views="using:ConstellaTTS.Core.Views"
+             xmlns:controls="using:ConstellaTTS.Core.Controls"
+             xmlns:dsslider="using:ConstellaTTS.SDK.DesignSystem.Controls.Slider"
+             xmlns:viewModelContracts="clr-namespace:ConstellaTTS.SDK.ViewModelContracts;assembly=ConstellaTTS.SDK"
              x:Class="ConstellaTTS.Core.Views.TrackListView"
              x:DataType="vm:TrackListViewModel">
 
     <UserControl.Styles>
+        <!-- Force-load the ConstellaSlider styles locally. The style
+             ships through the global DesignSystem aggregator, but we
+             include it here too as belt-and-braces against ordering
+             quirks at startup — if the global include hadn't merged
+             yet when the editor first opens, the slider would render
+             as an empty box (no template). The duplicate include is
+             idempotent: Avalonia merges the same StyleInclude key only
+             once. -->
+        <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Controls/Slider/ConstellaSlider.axaml" />
+
         <!-- Fade the in-list row while its VM is being dragged;
              the floating preview represents it during the drag. -->
         <Style Selector="Border.track-row">
@@ -36,19 +46,43 @@
                         BorderBrush="{DynamicResource BorderSubtle}"
                         BorderThickness="0,0,1,0"
                         BoxShadow="4 0 12 0 #40252538">
-                    <TextBlock Text="SECTIONS"
-                               VerticalAlignment="Center"
-                               Margin="12,0"
-                               FontSize="9"
-                               FontWeight="Medium"
-                               LetterSpacing="2"
-                               Foreground="{DynamicResource FgMuted}" />
+                    <!-- Label + inline add-track affordance. The button
+                         stays visible regardless of track-list scroll
+                         (this row is outside the ScrollViewer), so it's
+                         always one click away even with dozens of tracks.
+                         The reference HTML put "+ Track" under the last
+                         row — that got buried fast, so we moved it here. -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="12,0,6,0">
+                        <TextBlock Text="SECTIONS"
+                                   VerticalAlignment="Center"
+                                   FontSize="9"
+                                   FontWeight="Medium"
+                                   LetterSpacing="2"
+                                   Foreground="{DynamicResource FgMuted}" />
+                        <Button Grid.Column="1"
+                                x:Name="AddTrackButton"
+                                Content="+"
+                                Click="OnAddTrackClick"
+                                ToolTip.Tip="Yeni track ekle"
+                                Width="22" Height="22"
+                                Padding="0"
+                                VerticalAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource BorderMid}"
+                                BorderThickness="1"
+                                CornerRadius="3"
+                                FontSize="14"
+                                FontWeight="Medium"
+                                Foreground="{DynamicResource FgSecondary}" />
+                    </Grid>
                 </Border>
                 <!-- Dynamic ruler — self-drawing control that reads the
                      timeline viewport (pxPerSec, scrollOffsetSec) and
                      repaints ticks at the current zoom level. Replaces
                      the old hardcoded 0–28s grid. -->
-                <views:TimelineRulerControl Grid.Column="1" />
+                <controls:TimelineRulerControl Grid.Column="1" />
             </Grid>
         </Border>
 
@@ -68,7 +102,7 @@
                 <ItemsControl x:Name="TracksControl"
                               ItemsSource="{Binding Tracks}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="sdk:ITrackViewModel">
+                        <DataTemplate x:DataType="viewModelContracts:ITrackViewModel">
 
                             <!-- Outer border — indicator border burası, track rengiyle boyanır.
                                  Classes "track-row" + "drag-ghost" fade etmeyi idare eder. -->
@@ -86,17 +120,39 @@
                                                 Background="{DynamicResource BgElevated}"
                                                 BorderBrush="{DynamicResource BorderSubtle}"
                                                 BorderThickness="0,0,1,0"
-                                                BoxShadow="4 0 16 0 #50252538">
+                                                BoxShadow="4 0 16 0 #50252538"
+                                                PointerPressed="OnTrackHeaderPressed"
+                                                DoubleTapped="OnTrackHeaderDoubleTapped">
                                             <Grid ColumnDefinitions="4,*">
                                                 <Border Grid.Column="0" Background="{Binding Color}" />
                                                 <StackPanel Grid.Column="1"
                                                             Margin="10,0"
                                                             VerticalAlignment="Center"
                                                             Spacing="2">
-                                                    <TextBlock Text="{Binding Name}"
-                                                               FontSize="12"
-                                                               FontWeight="Medium"
-                                                               Foreground="{DynamicResource FgPrimary}" />
+                                                    <!-- Name label + inline rename TextBox. Right-click
+                                                         on the header flips IsEditing; the TextBox is
+                                                         wired in code-behind to commit on LostFocus /
+                                                         Enter and revert on Escape. -->
+                                                    <Grid>
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   IsVisible="{Binding !IsEditing}"
+                                                                   FontSize="12"
+                                                                   FontWeight="Medium"
+                                                                   Foreground="{DynamicResource FgPrimary}" />
+                                                        <TextBox Text="{Binding Name, Mode=TwoWay}"
+                                                                 IsVisible="{Binding IsEditing}"
+                                                                 FontSize="12"
+                                                                 FontWeight="Medium"
+                                                                 Padding="4,2"
+                                                                 Margin="-4,-2"
+                                                                 Background="{DynamicResource BgBase}"
+                                                                 BorderBrush="{DynamicResource AccentPurple}"
+                                                                 BorderThickness="1"
+                                                                 CornerRadius="3"
+                                                                 Foreground="{DynamicResource FgPrimary}"
+                                                                 LostFocus="OnTrackRenameLostFocus"
+                                                                 KeyDown="OnTrackRenameKeyDown" />
+                                                    </Grid>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -112,54 +168,30 @@
                                             <ItemsControl ItemsSource="{Binding Sections}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
-                                                        <Canvas />
+                                                        <!-- TimelineItemsPanel arranges each child directly
+                                                             from its bound IStageViewModel — reads StartSec /
+                                                             DurationSec, projects through the timeline viewport,
+                                                             and arranges the wrapping ContentPresenter at the
+                                                             matching pixel rect. This keeps hit-test bounds in
+                                                             sync with the visual position; the previous Canvas
+                                                             approach left ContentPresenters at (0, 0) even when
+                                                             the template root had Canvas.Left set, so clicks
+                                                             always landed on whichever block sat first in the
+                                                             collection. -->
+                                                        <timeline:TimelineItemsPanel />
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
-
-                                                <!-- CRITICAL: Position the ContentPresenter (the actual
-                                                     container Canvas sees as its child), NOT the DataTemplate
-                                                     root. Setting Canvas.Left inside the DataTemplate ends up
-                                                     on an inner element the outer Canvas doesn't look at, so
-                                                     every item stacks at (0, 0). ItemContainerTheme targets
-                                                     the container itself, and Canvas reads the attached
-                                                     property from there. -->
-                                                <ItemsControl.ItemContainerTheme>
-                                                    <ControlTheme TargetType="ContentPresenter">
-                                                        <Setter Property="Canvas.Top" Value="4" />
-                                                        <Setter Property="Canvas.Left">
-                                                            <Setter.Value>
-                                                                <!-- x:DataType on the item binding — the outer scope's
-                                                                     compiled x:DataType is ITrackViewModel (the Track),
-                                                                     but each container's DataContext is actually an
-                                                                     IStageViewModel (a block). Without this hint the
-                                                                     compiler tries to resolve StartSec on the wrong type
-                                                                     and fails at build time. -->
-                                                                <MultiBinding Converter="{x:Static tconv:TimelineConverters.TimeToPx}">
-                                                                    <Binding Path="StartSec" x:DataType="sdk:IStageViewModel" />
-                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="PxPerSec" />
-                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="ScrollOffsetSec" />
-                                                                </MultiBinding>
-                                                            </Setter.Value>
-                                                        </Setter>
-                                                    </ControlTheme>
-                                                </ItemsControl.ItemContainerTheme>
 
                                                 <ItemsControl.DataTemplates>
 
                                                     <!-- Section — TTS block with emotion + dirty indicators.
-                                                         Width is projected from DurationSec; positioning (Canvas.Left)
-                                                         lives on the ContentPresenter via ItemContainerTheme above. -->
-                                                    <DataTemplate DataType="sdk:ISectionViewModel">
-                                                        <Border Height="48"
-                                                                CornerRadius="3"
+                                                         Width and X come from TimelineItemsPanel during arrange,
+                                                         so the template doesn't set them: the Border just
+                                                         stretches to whatever rect the panel hands it. -->
+                                                    <DataTemplate DataType="viewModelContracts:ISectionViewModel">
+                                                        <Border CornerRadius="3"
                                                                 Background="{Binding Bg}"
                                                                 ClipToBounds="True">
-                                                            <Border.Width>
-                                                                <MultiBinding Converter="{x:Static tconv:TimelineConverters.DurationToPx}">
-                                                                    <Binding Path="DurationSec" />
-                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="PxPerSec" />
-                                                                </MultiBinding>
-                                                            </Border.Width>
                                                             <Grid>
                                                                 <!-- Dirty indicator: 3px yellow strip on left edge -->
                                                                 <Border HorizontalAlignment="Left"
@@ -181,15 +213,10 @@
                                                     </DataTemplate>
 
                                                     <!-- Stage — visual annotation with no TTS pipeline.
-                                                         Dashed outline + italic centered label. -->
-                                                    <DataTemplate DataType="sdk:IStageViewModel">
-                                                        <Grid Height="48">
-                                                            <Grid.Width>
-                                                                <MultiBinding Converter="{x:Static tconv:TimelineConverters.DurationToPx}">
-                                                                    <Binding Path="DurationSec" />
-                                                                    <Binding Source="{x:Static timeline:TimelineViewport.Current}" Path="PxPerSec" />
-                                                                </MultiBinding>
-                                                            </Grid.Width>
+                                                         Dashed outline + italic centered label. Same deal:
+                                                         panel decides the rect, template just paints inside. -->
+                                                    <DataTemplate DataType="viewModelContracts:IStageViewModel">
+                                                        <Grid>
                                                             <Rectangle RadiusX="3" RadiusY="3"
                                                                        Fill="{Binding Bg}"
                                                                        Stroke="{Binding AccentColor}"
@@ -279,7 +306,7 @@
                  start a create gesture. -->
             <Border x:Name="BlockEditor"
                     IsVisible="False"
-                    Width="360"
+                    Width="480"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
                     Background="{DynamicResource BgElevated}"
@@ -287,12 +314,20 @@
                     CornerRadius="6"
                     Padding="10,8"
                     BoxShadow="0 12 40 0 #D0000000">
-                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
-                    <!-- Row 0: meta chips + close button -->
-                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="8">
+
+                    <!-- ============ Row 0: meta chip strip ============
+                         Single-line ribbon mirroring the reference HTML:
+                         duration · start · end · sample · seed | × close.
+                         Sample and seed chips are SECTION-ONLY — their
+                         visibility is toggled from code-behind alongside
+                         the slider rows below. The whole strip stays one
+                         line so the editor reads as a tight inspector
+                         rather than a stack of card sections. -->
+                    <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                            <Border x:Name="BlockEditorDurationChip"
-                                    Background="{DynamicResource BgRibbon}"
+                            <!-- Static meta chips — always visible, even on stages. -->
+                            <Border Background="{DynamicResource BgRibbon}"
                                     BorderBrush="{DynamicResource BorderMid}"
                                     BorderThickness="1"
                                     CornerRadius="3"
@@ -321,7 +356,38 @@
                                            FontFamily="{DynamicResource FontMono}"
                                            Foreground="{DynamicResource FgMuted}" />
                             </Border>
+
+                            <!-- Sample chip — click to cycle / open picker.
+                                 Filename tail in cyan accent, mirroring the
+                                 reference. Section-only; hidden on stages.
+                                 The chip caps its width and ellipsises the
+                                 filename so a 1000-character path can't
+                                 push the rest of the strip off the editor. -->
+                            <Button x:Name="SamplePickerButton"
+                                    Padding="6,1"
+                                    MaxWidth="160"
+                                    Background="{DynamicResource BgRibbon}"
+                                    BorderBrush="{DynamicResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Cursor="Hand"
+                                    ToolTip.Tip="Voice sample">
+                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                    <TextBlock Text="🎤"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource AccentCyan}" />
+                                    <TextBlock x:Name="SamplePickerLabel"
+                                               Text="None"
+                                               FontSize="10"
+                                               FontFamily="{DynamicResource FontMono}"
+                                               Foreground="{DynamicResource AccentCyan}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Button>
+
                         </StackPanel>
+
+                        <!-- Close button — corner ID. -->
                         <Button Grid.Column="1"
                                 x:Name="BlockEditorCloseButton"
                                 Content="✕"
@@ -333,20 +399,137 @@
                                 FontSize="11" />
                     </Grid>
 
-                    <!-- Row 1: block type / label display (shows character hint,
-                         editable in v2) -->
-                    <TextBlock Grid.Row="1"
-                               x:Name="BlockEditorKindText"
-                               FontSize="10"
-                               FontWeight="Medium"
-                               Foreground="{DynamicResource FgSecondary}"
-                               LetterSpacing="0.5" />
+                    <!-- ============ Row 1: engine combo ============
+                         Replaces the reference's "Karakter B · TR" chip.
+                         Same visual slot — full-width selector below the
+                         meta strip. Track name and engine are conceptually
+                         distinct; the track name lives in the row header,
+                         the engine choice belongs to the section. -->
+                    <ComboBox x:Name="EngineCombo"
+                              HorizontalAlignment="Stretch"
+                              Background="{DynamicResource BgBase}"
+                              BorderBrush="{DynamicResource BorderMid}"
+                              Foreground="{DynamicResource FgPrimary}"
+                              FontSize="11"
+                              Padding="8,4"
+                              PlaceholderText="Engine seç" />
 
-                    <!-- Row 2: label text — editable, two-way bound to
-                         SelectedBlock.Label via code-behind so mutations
-                         echo into the track row labels as the user types. -->
-                    <TextBox Grid.Row="2"
-                             x:Name="BlockEditorLabelText"
+                    <!-- ============ Row 1.5: seed row ============
+                         Lifted out of the meta chip strip into its own
+                         row so there's room for both the value stepper
+                         AND the post-generation advance mode dropdown.
+                         The original inline chip ran out of horizontal
+                         budget when long sample filenames pushed the
+                         strip towards the close button.
+
+                         Layout: left side has the seed chip (label,
+                         decrement, value or "auto", increment, dice);
+                         right side has "advance: [mode]" — what to do
+                         to the seed AFTER each successful generation.
+                         Modes: Fixed (no change — reproducible),
+                         Increment (+1), Decrement (−1), Random (fresh
+                         non-zero each time). -->
+                    <!-- Seed row — sized to match the engine combo and
+                         text body above/below so the editor reads as a
+                         settings list with consistent rhythm. The seed
+                         chip on the left and the advance dropdown on the
+                         right share an identical 28 px row height; the
+                         middle column eats the slack so the dropdown is
+                         right-aligned without stretching.
+
+                         The chip's value column shows the numeric seed
+                         only — the "auto" placeholder is gone now that
+                         the advance dropdown carries that semantic
+                         (Random mode produces a fresh seed every render,
+                         Fixed keeps it as-is, etc.). 0 displays as plain
+                         "0" so the zero state is still selectable. -->
+                    <Grid x:Name="SeedRow"
+                          ColumnDefinitions="Auto,*,Auto,Auto"
+                          Height="28"
+                          IsVisible="False">
+                        <Border Background="{DynamicResource BgBase}"
+                                BorderBrush="{DynamicResource BorderMid}"
+                                BorderThickness="1"
+                                CornerRadius="3"
+                                Padding="8,0"
+                                Height="28"
+                                VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="seed"
+                                           FontSize="9"
+                                           LetterSpacing="1"
+                                           Foreground="{DynamicResource FgMuted}"
+                                           VerticalAlignment="Center" />
+                                <Button x:Name="SeedDecrementButton"
+                                        Content="◀"
+                                        FontSize="9"
+                                        Width="16" Height="18"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Foreground="{DynamicResource FgSecondary}"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand" />
+                                <TextBlock x:Name="SeedValueText"
+                                           FontSize="11"
+                                           FontFamily="{DynamicResource FontMono}"
+                                           MinWidth="60"
+                                           TextAlignment="Center"
+                                           Foreground="{DynamicResource FgPrimary}"
+                                           VerticalAlignment="Center" />
+                                <Button x:Name="SeedIncrementButton"
+                                        Content="▶"
+                                        FontSize="9"
+                                        Width="16" Height="18"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Foreground="{DynamicResource FgSecondary}"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand" />
+                                <Border Width="1" Background="{DynamicResource BorderSubtle}" Margin="4,4" />
+                                <Button x:Name="SeedRandomizeButton"
+                                        Content="🎲"
+                                        FontSize="12"
+                                        Width="22" Height="20"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand"
+                                        ToolTip.Tip="Rastgele seed" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Slack column (Grid.Column=1) — pushes the
+                             advance label + combo to the right edge so
+                             the row reads as "value | choice". -->
+
+                        <TextBlock Grid.Column="2"
+                                   Text="advance"
+                                   FontSize="9"
+                                   LetterSpacing="1"
+                                   Foreground="{DynamicResource FgMuted}"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,6,0" />
+                        <ComboBox Grid.Column="3"
+                                  x:Name="SeedModeCombo"
+                                  Background="{DynamicResource BgBase}"
+                                  BorderBrush="{DynamicResource BorderMid}"
+                                  Foreground="{DynamicResource FgPrimary}"
+                                  FontSize="11"
+                                  Padding="8,0"
+                                  Height="28"
+                                  MinWidth="120"
+                                  VerticalAlignment="Center"
+                                  VerticalContentAlignment="Center"
+                                  ToolTip.Tip="Generate sonrasında seed'e ne olacak" />
+                    </Grid>
+
+                    <!-- ============ Row 2: prompt text ============
+                         Big multiline TextBox — the body of what gets fed
+                         to TTS for sections, or the annotation for stages. -->
+                    <TextBox x:Name="BlockEditorLabelText"
                              MinHeight="80"
                              AcceptsReturn="True"
                              TextWrapping="Wrap"
@@ -357,7 +540,84 @@
                              CornerRadius="4"
                              Padding="7,5"
                              Foreground="{DynamicResource FgPrimary}" />
-                </Grid>
+
+                    <!-- ============ Row 3: SECTION-ONLY footer ============
+                         Two parallel slider rows + a Generate button on
+                         the right of the bottom row. Hidden for stages.
+                         Layout intentionally matches the reference HTML:
+                         label · gradient track · numeric value · [button].
+                         Temperature uses the same shape so the eye reads
+                         them as a small vertical pair, not two
+                         independently-styled rows. -->
+                    <StackPanel x:Name="SectionOnlyPanel"
+                                IsVisible="False"
+                                Spacing="6">
+
+                        <!-- emotion: 4-col grid — label, slider, value, spacer (so
+                             the sliders' value chips line up vertically with
+                             temperature's). The slider IS the gradient — no
+                             stacked Border overlay needed; ConstellaSlider's
+                             Emotion mode paints the cool→hot scale on the
+                             track and samples the matching colour for the
+                             thumb at the current value. -->
+                        <Grid ColumnDefinitions="56,*,32,72" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0"
+                                       Text="emotion"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource FgMuted}"
+                                       VerticalAlignment="Center" />
+                            <dsslider:ConstellaSlider Grid.Column="1"
+                                                      x:Name="EmotionSlider"
+                                                      Mode="Emotion"
+                                                      Minimum="0" Maximum="100"
+                                                      AccentBrush="{DynamicResource AccentPurple}" />
+                            <TextBlock Grid.Column="2"
+                                       x:Name="EmotionValueText"
+                                       FontSize="10"
+                                       FontFamily="{DynamicResource FontMono}"
+                                       Foreground="{DynamicResource FgSecondary}"
+                                       TextAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Margin="6,0" />
+                        </Grid>
+
+                        <!-- temp + Generate: same 4-col grid so the value
+                             chip aligns under emotion's, with the Generate
+                             button taking the last column. Solid mode —
+                             plain accent fill, no gradient. -->
+                        <Grid ColumnDefinitions="56,*,32,72" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0"
+                                       Text="temp"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource FgMuted}"
+                                       VerticalAlignment="Center" />
+                            <dsslider:ConstellaSlider Grid.Column="1"
+                                                      x:Name="TemperatureSlider"
+                                                      Mode="Solid"
+                                                      Minimum="0" Maximum="2"
+                                                      SmallChange="0.1"
+                                                      LargeChange="0.5"
+                                                      AccentBrush="{DynamicResource AccentPurple}" />
+                            <TextBlock Grid.Column="2"
+                                       x:Name="TemperatureValueText"
+                                       FontSize="10"
+                                       FontFamily="{DynamicResource FontMono}"
+                                       Foreground="{DynamicResource FgSecondary}"
+                                       TextAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Margin="6,0" />
+                            <Button Grid.Column="3"
+                                    x:Name="GenerateButton"
+                                    Classes="ctts accent"
+                                    Content="Generate ▶"
+                                    FontSize="10"
+                                    Padding="10,4"
+                                    HorizontalAlignment="Stretch" />
+                        </Grid>
+
+                    </StackPanel>
+
+                </StackPanel>
             </Border>
 
         </Panel>
@@ -382,7 +642,7 @@
                                Foreground="{DynamicResource FgMuted}" />
                 </Border>
                 <Border Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
-                <views:TimelineMinimapControl x:Name="Minimap" Grid.Column="2" />
+                <controls:TimelineMinimapControl x:Name="Minimap" Grid.Column="2" />
             </Grid>
         </Border>
 

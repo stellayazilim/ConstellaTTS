@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using ConstellaTTS.Core.ViewModels;
 
 namespace ConstellaTTS.Core.Windows;

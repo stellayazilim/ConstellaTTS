@@ -1,5 +1,4 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
+
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;

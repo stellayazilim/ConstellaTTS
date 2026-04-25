@@ -2,20 +2,35 @@ using System.Collections.ObjectModel;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ConstellaTTS.Domain;
-using ConstellaTTS.SDK;
+using ConstellaTTS.SDK.ViewModelContracts;
 
 namespace ConstellaTTS.Core.ViewModels;
 
 /// <summary>
 /// Default track view model. Plugins may replace via a custom
 /// <see cref="ITrackViewModel"/> implementation registered in DI.
+///
+/// <c>Id</c>, <c>Color</c>, <c>BlockBg</c> are captured from the domain
+/// <see cref="Track"/> at construction and stay fixed for the VM's
+/// lifetime — identity and accent are stable. <c>Name</c> is mutable
+/// (user can rename inline) and <c>IsEditing</c> is pure view state
+/// driving the rename label↔TextBox swap.
 /// </summary>
-public sealed partial class TrackViewModel(Track track) : ObservableObject, ITrackViewModel
+public sealed partial class TrackViewModel : ObservableObject, ITrackViewModel
 {
-    public int    Id      { get; } = track.Id;
-    public string Name    { get; } = track.Name;
-    public string Color   { get; } = track.Color;
-    public string BlockBg { get; } = track.BlockBg;
+    public TrackViewModel(Track track)
+    {
+        Id      = track.Id;
+        Color   = track.Color;
+        BlockBg = track.BlockBg;
+        _name   = track.Name;
+    }
+
+    public int    Id      { get; }
+    public string Color   { get; }
+    public string BlockBg { get; }
+
+    [ObservableProperty] private string _name;
 
     [ObservableProperty] private byte _order;
 
@@ -26,6 +41,13 @@ public sealed partial class TrackViewModel(Track track) : ObservableObject, ITra
     /// preview as the only visible representation.
     /// </summary>
     [ObservableProperty] private bool _isDragging;
+
+    /// <summary>
+    /// True while the user is inline-renaming this track via a right-click
+    /// on the header. XAML swaps the Name TextBlock for a TextBox while
+    /// this is set.
+    /// </summary>
+    [ObservableProperty] private bool _isEditing;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IndicatorBorderThickness))]

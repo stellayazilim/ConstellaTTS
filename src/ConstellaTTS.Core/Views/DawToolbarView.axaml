@@ -3,18 +3,98 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:ConstellaTTS.Core.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="32"
+             xmlns:controls="using:ConstellaTTS.Core.Controls"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="40"
              x:Class="ConstellaTTS.Core.Views.DawToolbarView"
              x:DataType="vm:DawToolbarViewModel">
 
+    <!-- Force-load the icon and button styles locally instead of relying
+         purely on the global ThemeProvider chain. The toolbar resolves
+         very early in the application lifecycle and the icon templates
+         can otherwise render as empty boxes if the global styles haven't
+         been merged into Application.Styles yet. Including them here is
+         idempotent — the global include can stay and just no-ops if these
+         have already been loaded. -->
+    <UserControl.Styles>
+        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerIcons.axaml" />
+        <StyleInclude Source="avares://ConstellaTTS.Core/Controls/PlayerButton.axaml" />
+    </UserControl.Styles>
+
+    <!-- Single horizontal strip living in MainLayout's Row 0. Hosts (in
+         order): transport controls, the listen-while-generating toggle,
+         a global timecode display, current engine summary, and the sound
+         bank flyout toggle.
+
+         Conceptually this whole thing IS the toolbar — MainLayout no
+         longer paints transport itself. Anything that lives globally
+         (project-wide playback, engine info, library access) belongs
+         here; per-section controls (manual Generate, emotion / temp
+         sliders, etc.) stay inside the block editor overlay. -->
     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0">
 
+        <!-- ── Transport ────────────────────────────────────────────────
+             Three classic DAW transport buttons. The fourth, ▶G, is the
+             "listen while generating" toggle: Play scrubs the timeline as
+             usual; ▶G additionally queues TTS generation for any dirty
+             section the playhead enters. Per-section Generate (inside the
+             block editor) stays around for one-shot manual renders that
+             don't touch playback. -->
+        <controls:PlayerButton Foreground="{StaticResource AccentPurple}"
+                               ToolTip.Tip="Go to Start">
+            <controls:GoToStartIcon />
+        </controls:PlayerButton>
+        <controls:PlayerButton Foreground="{StaticResource AccentBlue}"
+                               ToolTip.Tip="Play">
+            <controls:PlayIcon />
+        </controls:PlayerButton>
+        <controls:PlayerButton Foreground="{StaticResource AccentPink}"
+                               ToolTip.Tip="Stop">
+            <controls:StopIcon />
+        </controls:PlayerButton>
+
+        <Border Classes="g-separator-v" Margin="4,8" />
+
+        <!-- Listen-while-generating toggle. Reuses PlayerButton chrome
+             with a stacked play + "G" text badge instead of a custom
+             icon type — keeps the visual consistent with the transport
+             row without inventing a new TemplatedControl. The play
+             triangle uses AccentBlue (matching the Play button) so the
+             primary action reads as "play"; the G badge is AccentPink
+             (matching the Stop button) so it pops against the blue
+             triangle and ties the toggle visually to the transport
+             row's colour vocabulary. -->
+        <controls:PlayerButton x:Name="GenerateWhileListenToggle"
+                               Foreground="{StaticResource AccentBlue}"
+                               ToolTip.Tip="Generate while listening">
+            <Grid>
+                <controls:PlayIcon />
+                <TextBlock Text="G"
+                           FontSize="9"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Bottom"
+                           Margin="0,0,-1,-2"
+                           Foreground="{StaticResource AccentPink}" />
+            </Grid>
+        </controls:PlayerButton>
+
+        <Border Classes="g-separator-v" Margin="4,8" />
+
+        <!-- ── Global timecode ──────────────────────────────────────────
+             Shows the current playhead position. Static placeholder for
+             now; will bind to an IPlaybackService.PositionSec once the
+             player is real. -->
         <Border Classes="timecode">
             <TextBlock Text="00:00.0" />
         </Border>
 
         <Border Classes="g-separator-v" Margin="4,8" />
 
+        <!-- ── Engine summary ───────────────────────────────────────────
+             Read-only summary of the active engine. Click should open
+             the engine picker; today the active engine is global, but
+             eventually the section editor's per-section engine wins and
+             this becomes a fallback display. -->
         <TextBlock Classes="toolbar-label" Margin="0,0,4,0" Text="Engine:" />
         <TextBlock FontSize="11"
                    FontWeight="Medium"
@@ -28,7 +108,19 @@
 
         <Border Classes="g-separator-v" Margin="4,8" />
 
-        <Button Classes="mode-btn"
+        <!-- ── Sound bank flyout ────────────────────────────────────────
+             Toggles the docked sample library window. Active class
+             reflects the flyout's open/closed state via the VM.
+
+             The button MUST be named SampleLibraryButton so the flyout's
+             outside-click dismissal handler can identify it as a
+             friendly source. Without the name, clicking the button
+             while the flyout is open registers as an outside click —
+             the flyout hides on pointer-down, then the Command on
+             pointer-up reopens it, producing a visible flicker that
+             reads as a broken toggle. -->
+        <Button x:Name="SampleLibraryButton"
+                Classes="mode-btn"
                 Classes.active="{Binding IsSoundBankVisible}"
                 Command="{Binding ToggleSoundBank}"
                 ToolTip.Tip="Ses Bankası (Ctrl+L)">

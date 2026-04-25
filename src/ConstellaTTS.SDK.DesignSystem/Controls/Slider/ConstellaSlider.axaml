@@ -1,0 +1,122 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:slider="using:ConstellaTTS.SDK.DesignSystem.Controls.Slider">
+
+    <Design.PreviewWith>
+        <StackPanel Margin="20" Spacing="14" Width="320" Background="#0D0D14">
+            <slider:ConstellaSlider Mode="Solid"
+                                    Minimum="0" Maximum="2"
+                                    Value="0.7"
+                                    SmallChange="0.1"
+                                    AccentBrush="#7c6af7" />
+            <slider:ConstellaSlider Mode="Emotion"
+                                    Minimum="0" Maximum="100"
+                                    Value="50"
+                                    AccentBrush="#7c6af7" />
+            <slider:ConstellaSlider Mode="Gradient"
+                                    Minimum="0" Maximum="1"
+                                    Value="0.5"
+                                    AccentBrush="#7c6af7"
+                                    TrackBrush="{DynamicResource Gradient-Cosmic}" />
+        </StackPanel>
+    </Design.PreviewWith>
+
+    <!--  ConstellaSlider — single-row interactive slider with three
+          presentation modes (Solid / Gradient / Emotion).
+
+          Layout uses a Panel for the moving parts (PART_Fill,
+          PART_Thumb) so they can be positioned in pixel space by
+          code-behind. The track is a plain Border behind them. Avoids
+          the column-Star-factor binding gymnastics that pure XAML
+          would require, and lets us update positions imperatively in
+          OnApplyTemplate / value changes.
+
+          Visual stack (back to front):
+            1. PART_Track — full-width muted background pill, Mode swaps
+               its Background between Slate-2 (Solid), TrackBrush
+               (Gradient), and the canonical emotion gradient (Emotion).
+            2. PART_Fill  — left-aligned bar inside the track, only
+               visible in Solid mode. Its width is set to the thumb's
+               X position so the user reads "filled to here".
+            3. PART_Thumb — Ellipse with a dark stroke ring. Its left
+               margin is updated imperatively to land its centre on
+               the value's pixel position. Fill is bound to ThumbBrush,
+               which the control recomputes from EmotionColors when
+               Mode is Emotion.
+    -->
+    <Style Selector="slider|ConstellaSlider">
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="slider:ConstellaSlider">
+                <Panel>
+                    <!-- Track: 6px tall pill, vertically centred. -->
+                    <Border x:Name="PART_Track"
+                            Height="6"
+                            CornerRadius="3"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource Slate-2}" />
+
+                    <!-- Fill: left-anchored solid bar, width updated
+                         from code-behind. Hidden in Gradient/Emotion
+                         modes (mode-keyed selectors below). -->
+                    <Border x:Name="PART_Fill"
+                            Height="6"
+                            CornerRadius="3,0,0,3"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Background="{TemplateBinding AccentBrush}"
+                            IsVisible="False"
+                            Width="0" />
+
+                    <!-- Thumb: Ellipse with dark stroke ring for contrast
+                         against any track colour. Margin.Left updated
+                         imperatively so the centre tracks the value. -->
+                    <Ellipse x:Name="PART_Thumb"
+                             Width="14" Height="14"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Center"
+                             Fill="{Binding ThumbBrush, RelativeSource={RelativeSource TemplatedParent}}"
+                             Stroke="{DynamicResource Noir-1}"
+                             StrokeThickness="2" />
+                </Panel>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- Solid mode: PART_Fill becomes visible (width is set in code). -->
+    <Style Selector="slider|ConstellaSlider[Mode=Solid] /template/ Border#PART_Fill">
+        <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!-- Gradient mode: muted track is replaced by the user-supplied
+         TrackBrush. PART_Fill stays hidden — a solid-colour fill on
+         top of a gradient would muddle the visual story. -->
+    <Style Selector="slider|ConstellaSlider[Mode=Gradient] /template/ Border#PART_Track">
+        <Setter Property="Background"
+                Value="{Binding TrackBrush, RelativeSource={RelativeSource TemplatedParent}}" />
+    </Style>
+
+    <!-- Emotion mode: track painted with the canonical emotion gradient
+         from Tokens.axaml. ThumbBrush is computed in code (samples
+         EmotionColors at the current value), so no extra binding here. -->
+    <Style Selector="slider|ConstellaSlider[Mode=Emotion] /template/ Border#PART_Track">
+        <Setter Property="Background" Value="{DynamicResource Gradient-Emotion}" />
+    </Style>
+
+    <!-- Hover affordance: brighter border on the track. No animation —
+         a pulse during a drag would distract from the value readout. -->
+    <Style Selector="slider|ConstellaSlider:pointerover /template/ Border#PART_Track">
+        <Setter Property="BorderBrush" Value="{DynamicResource Slate-3}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <!-- Pressed: thumb shrinks slightly, signalling capture. -->
+    <Style Selector="slider|ConstellaSlider:pressed /template/ Ellipse#PART_Thumb">
+        <Setter Property="RenderTransform">
+            <ScaleTransform ScaleX="0.92" ScaleY="0.92" />
+        </Setter>
+    </Style>
+
+</Styles>

@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using ConstellaTTS.Core.Actions;
 using ConstellaTTS.Core.Windows;
-using ConstellaTTS.SDK.Primitives;
+using ConstellaTTS.SDK.ViewModelContracts;
 
 namespace ConstellaTTS.Core.ViewModels;
 

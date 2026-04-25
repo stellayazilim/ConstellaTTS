@@ -58,11 +58,11 @@
                         Spacing="8">
                 <Button x:Name="CancelButton"
                         Content="İptal"
-                        Classes="ghost"
+                        Classes="ctts ghost"
                         Width="90"/>
                 <Button x:Name="ConfirmButton"
                         Content="Uygula"
-                        Classes="danger"
+                        Classes="ctts danger"
                         Width="90"/>
             </StackPanel>
 

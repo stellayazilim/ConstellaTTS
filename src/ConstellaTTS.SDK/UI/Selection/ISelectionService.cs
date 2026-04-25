@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using ConstellaTTS.SDK.ViewModelContracts;
 
 namespace ConstellaTTS.SDK.UI.Selection;
 

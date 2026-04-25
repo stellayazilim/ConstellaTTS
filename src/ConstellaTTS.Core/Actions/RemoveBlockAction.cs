@@ -1,8 +1,7 @@
-using System;
-using System.Collections.Generic;
-using ConstellaTTS.SDK;
+
 using ConstellaTTS.SDK.History;
 using ConstellaTTS.SDK.UI.Actions;
+using ConstellaTTS.SDK.ViewModelContracts;
 
 namespace ConstellaTTS.Core.Actions;
 

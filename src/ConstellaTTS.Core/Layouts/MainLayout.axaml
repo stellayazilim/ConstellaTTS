@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:ConstellaTTS.Core.Controls"
+             x:Class="ConstellaTTS.Core.Layouts.MainLayout">
+
+    <Grid RowDefinitions="36,40,*">
+
+        <!-- ── Row 0: Toolbar ──
+             Transport, generate-while-listen toggle, timecode, engine
+             summary and sound-bank flyout all live in DawToolbarView,
+             which mounts itself into the toolbar region. Plugins can
+             append their own toolbar items via the same region. -->
+        <Border Grid.Row="0" Classes="g-bg-toolbar g-border-subtle"
+                BorderThickness="0,0,0,1">
+            <controls:RegionControl RegionId="MainWindow.Layout.Toolbar"
+                                   Margin="0"
+                                   VerticalAlignment="Center" />
+        </Border>
+
+        <!-- ── Row 1: Logo + ViewTools region ── -->
+        <Border Grid.Row="1"
+                Background="{StaticResource BgLogoRow}"
+                BorderBrush="{StaticResource BorderSubtle}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="200,1,*">
+
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Margin="10,0"
+                            VerticalAlignment="Center">
+                    <Image Source="{SvgImage avares://ConstellaTTS.Core/Assets/logo.svg}"
+                           Width="28" Height="28" />
+                    <TextBlock FontFamily="{StaticResource FontBrand}"
+                               FontSize="11"
+                               FontWeight="Bold"
+                               LetterSpacing="1.5"
+                               VerticalAlignment="Center">
+                        <TextBlock.Foreground>
+                            <StaticResource ResourceKey="GradText" />
+                        </TextBlock.Foreground>
+                        ConstellaTTS
+                    </TextBlock>
+                </StackPanel>
+
+                <Border Grid.Column="1"
+                        Background="{StaticResource BorderMid}"
+                        Margin="0,6" />
+
+                <!-- ViewTools region -->
+                <controls:RegionControl Grid.Column="2"
+                                       RegionId="MainWindow.Layout.ViewTools"
+                                       Margin="12,0"
+                                       VerticalAlignment="Center" />
+
+            </Grid>
+        </Border>
+
+        <!-- ── Row 2: Content region ── -->
+        <Border Grid.Row="2"
+                x:Name="TimelineRegion"
+                Background="{StaticResource BgBase}">
+            <controls:RegionControl RegionId="MainWindow.Layout.Content" />
+        </Border>
+
+    </Grid>
+
+</UserControl>

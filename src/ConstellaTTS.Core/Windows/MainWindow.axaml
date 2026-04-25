@@ -3,7 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewModel="clr-namespace:ConstellaTTS.Core.ViewModels"
-        xmlns:regions="clr-namespace:ConstellaTTS.Core.UI.Regions;assembly=ConstellaTTS.Core"
+        xmlns:regions="clr-namespace:ConstellaTTS.Core.Controls;assembly=ConstellaTTS.Core"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="ConstellaTTS.Core.Windows.MainWindow"
         Title="ConstellaTTS"
@@ -57,6 +57,24 @@
                                 <MenuItem Header="View" />
                                 <MenuItem Header="Help" />
                             </Menu>
+                            <!-- "static" badge in the centre of the title bar.
+                                 The transport, timecode, engine summary and
+                                 sound-bank flyout in the row below are all
+                                 window-level controls (project-wide playback,
+                                 global engine, etc.) — the badge labels that
+                                 row's contents as fixed app chrome rather than
+                                 per-section context. Hit-test invisible so the
+                                 drag area underneath still receives window-move
+                                 events. -->
+                            <TextBlock Text="static"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontSize="9"
+                                       FontWeight="Medium"
+                                       LetterSpacing="2"
+                                       Opacity="0.45"
+                                       Foreground="{StaticResource FgMuted}"
+                                       IsHitTestVisible="False" />
                         </Panel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Stretch">
                             <Button x:Name="MinimizeBtn" Width="40" Height="32" Padding="0"

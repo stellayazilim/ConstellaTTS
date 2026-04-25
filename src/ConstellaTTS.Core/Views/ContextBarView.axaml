@@ -4,7 +4,21 @@
              x:Class="ConstellaTTS.Core.Views.ContextBarView"
              x:DataType="vm:ContextBarViewModel">
 
-    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+    <!-- Tool-only contextual bar.
+         Holds the primary tool radio (Select / Create), its sub-type
+         radio (Section / Stage, surfaces only in Create mode), and a
+         contextual Delete button that appears when Select has something
+         picked. The trailing column absorbs slack so the toolbar reads
+         left-aligned without a stretched final cell.
+
+         Earlier this row also carried a "Giriş · 2 track · 0:32"
+         section summary and a Ctrl/Scroll cheat-sheet hint string —
+         both removed: the summary was per-section info that doesn't
+         belong on a tool toolbar, and the hint string was unreadable
+         at the muted opacity it needed to not steal attention.
+         Documenting interaction belongs in tooltips / a help panel,
+         not in chrome. -->
+    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
 
         <!-- Primary tool radio: Select / Create -->
         <Button Grid.Column="0"
@@ -22,9 +36,8 @@
             Create
         </Button>
 
-        <!-- Subtle inline divider between primary and sub-radio.
-             Hidden when the sub-radio is, so Select mode doesn't show a
-             divider with nothing after it. -->
+        <!-- Sub-type radio divider — hidden in lockstep with the radio
+             itself so Select mode doesn't show a hanging separator. -->
         <Border Grid.Column="2"
                 Classes="g-separator-v"
                 Margin="6,8"
@@ -50,9 +63,9 @@
             Stage
         </Button>
 
-        <!-- Delete button — Select mode + block selected. Separator
-             + button fade in together so the toolbar doesn't shift
-             underneath the user's eye when selection changes. -->
+        <!-- Delete — Select mode + block/track selected. Separator and
+             button fade in together so neighbouring buttons don't shift
+             when the selection changes. -->
         <Border Grid.Column="5"
                 Classes="g-separator-v"
                 Margin="6,8"
@@ -61,39 +74,13 @@
                 Classes="mode-btn"
                 IsVisible="{Binding IsDeleteVisible}"
                 Command="{Binding DeleteSelectionCommand}"
-                ToolTip.Tip="Seçili bloğu sil (Del)"
+                ToolTip.Tip="Seçili bloğu / track'i sil (Del)"
                 Foreground="{DynamicResource StatusDanger}">
-            Delete
+            <TextBlock Text="{Binding DeleteLabel}" />
         </Button>
 
-        <Border Grid.Column="7" Classes="g-separator-v" Margin="8,8" />
-
-        <!-- Aktif section özeti -->
-        <TextBlock Grid.Column="8"
-                   Text="{Binding SectionLabel}"
-                   FontSize="11"
-                   FontWeight="Medium"
-                   Foreground="{DynamicResource FgPrimary}"
-                   VerticalAlignment="Center" />
-
-        <!-- Hints — sağa yaslanır -->
-        <TextBlock Grid.Column="9"
-                   Text="{Binding Hints}"
-                   FontSize="10"
-                   Foreground="{DynamicResource FgMuted}"
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Right"
-                   Margin="0,0,8,0"
-                   Opacity="0.6" />
-
-        <!-- Add track — always available. Sits at the far right so it
-             doesn't shift when the delete button appears. -->
-        <Button Grid.Column="10"
-                Classes="mode-btn"
-                Command="{Binding AddTrackCommand}"
-                ToolTip.Tip="Yeni track ekle">
-            + Track
-        </Button>
+        <!-- Trailing slack column — soaks remaining width so buttons
+             don't stretch. Empty by design. -->
 
     </Grid>
 

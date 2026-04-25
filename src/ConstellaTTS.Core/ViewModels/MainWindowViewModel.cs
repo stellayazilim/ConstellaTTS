@@ -1,6 +1,4 @@
-﻿using Avalonia.Input;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 
 namespace ConstellaTTS.Core.ViewModels;

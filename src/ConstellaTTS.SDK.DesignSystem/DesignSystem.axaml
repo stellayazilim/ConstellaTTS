@@ -21,4 +21,10 @@
     <!-- Dark theme: semantic aliases + tüm style'lar -->
     <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Theme/DarkTheme.axaml" />
 
+    <!-- Custom controls — each is opt-in via its own style include so
+         design-system consumers can pick controls a la carte if they
+         want to without pulling the whole bundle. The default app
+         entrypoint (this file) pulls everything in. -->
+    <StyleInclude Source="avares://ConstellaTTS.SDK.DesignSystem/Controls/Slider/ConstellaSlider.axaml" />
+
 </Styles>

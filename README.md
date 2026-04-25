@@ -4,7 +4,7 @@
 
 ConstellaTTS Studio is a local-first desktop application for generating in-game dialogue, cutscene narration, and character voices. It works like a MIDI piano roll: each spoken sentence is a "section" positioned on a timeline, generated independently, and assembled into a final audio output.
 
-**Stack:** Avalonia UI + C# · CommunityToolkit.Mvvm · Python IPC daemon (MessagePack) · Embedded Python 3.11
+**Stack:** Avalonia UI + C# · CommunityToolkit.Mvvm · Python IPC daemon (MessagePack) · OwnAudioSharp.Basic · Embedded Python 3.11
 
 ---
 
@@ -22,36 +22,43 @@ ConstellaTTS Studio is a local-first desktop application for generating in-game 
 
 ## Architecture
 
-### Slot System
+### Region System
 
-Every window declares a `SlotMap` — a tree of named slots typed by `SlotType`:
-
-| Type | Description |
-|------|-------------|
-| `Window` | Top-level window |
-| `Layout` | Container that defines child slots |
-| `Page` | Full view, exposes its own child slots when mounted |
-| `Control` | Leaf node — no children |
+Windows expose named regions via `RegionControl` in XAML. Each region has a
+dot-path identifier (e.g. `MainWindow.Layout.Toolbar`) that views can be
+mounted into and unmounted from at runtime. Regions are discovered by
+scanning the open window's visual tree — no upfront declaration of a
+slot tree, no separate window descriptor type.
 
 ```
 MainWindow
-  └── LayoutSlot [ContentControl]
-        └── MainLayout              ← mounted at startup via DeferMount
-              ├── ToolbarSlot       ← plugins add controls here
-              └── ViewToolsSlot     ← active view's contextual tools
+  └── RegionControl  RegionId="MainWindow.Layout"
+        └── MainLayout              ← mounted at startup
+              ├── RegionControl  RegionId="MainWindow.Layout.Toolbar"
+              ├── RegionControl  RegionId="MainWindow.Layout.ViewTools"
+              └── RegionControl  RegionId="MainWindow.Layout.Content"
 ```
+
+Region IDs are kept as string constants in `Regions` (SDK), so plugin
+modules and core code share the same vocabulary without coupling
+through generated types.
 
 ### Navigation
 
 ```csharp
-app.NavigationManager.Navigate(nav => nav
-    .OpenWindow<SectionEditorWindow>()
-    .SwapLayout<SectionEditorLayout>()
-    .Mount(Slots.Content, typeof(SectionEditorView))
-    .Mount(Slots.Toolbar, typeof(SectionToolbarView)));
+nav.Navigate(new NavigationBuilder()
+    .OpenWindow<MainWindow>()
+    .Mount(Regions.Layout,    typeof(MainLayout))
+    .Mount(Regions.Toolbar,   typeof(DawToolbarView))
+    .Mount(Regions.ViewTools, typeof(ContextBarView))
+    .Mount(Regions.Content,   typeof(TrackListView))
+    .Build());
 ```
 
-Every navigation is recorded in `IHistoryManager` — undoable with Ctrl+Z.
+User-initiated navigation pushes to `IHistoryManager` so window opens,
+mounts and flyout toggles are undoable with Ctrl+Z. Bootstrap navigation
+bypasses history via `ApplyOnly` — otherwise Ctrl+Z immediately after
+launch would close `MainWindow` and tear the app down.
 
 ### Plugin System
 
@@ -71,7 +78,11 @@ public class MyPlugin : IConstellaModule
 }
 ```
 
-Plugins are discovered from `./plugins/` — DLLs scanned, `IConstellaModule` implementations instantiated, sorted by dependency graph, then `Build()` called in order.
+Plugins are discovered from `./plugins/` — DLLs scanned, `IConstellaModule`
+implementations instantiated, sorted by dependency graph, then `Build()`
+called in order. Plugins mount their UI by issuing navigation requests
+against existing region IDs (or by exposing their own regions in plugin
+windows).
 
 ### Timeline Editor
 
@@ -98,7 +109,7 @@ Block-create collisions are resolved at commit time by
 their original positions snapshot into the undo action so Ctrl+Z
 restores the exact pre-create state. Ctrl-over-canvas transiently
 overrides the tool to Create so any tool can draw without a mode
-switch; the context bar highlights the override via the viewport’s
+switch; the context bar highlights the override via the viewport's
 `EffectiveTool` so the UI tracks the preview, not just the committed
 state.
 
@@ -143,17 +154,15 @@ simply by deriving the path from the spawned process's PID. No stdout
 or stderr sideband is required for discovery; the named pipe namespace
 itself is the rendezvous.
 
-### Audio Streaming Pipeline
+### Audio I/O
 
-```
-Python → raw PCM chunks
-    ↓
-BufferStreamer.Append()             — writes to temp .raw file
-    ↓  threshold OR final=true
-BufferReadStream.ReadChunksAsync()  — streams to player as available
-    ↓  final=true
-Opus encode → project audio file    — temp file deleted
-```
+> The runtime audio layer is being rewritten on top of OwnAudioSharp.Basic
+> (cross-platform, MIT). The previous NAudio-based prototype and the
+> stand-in `BufferStreamer` ring-buffer were removed during the namespace
+> refactor and will be replaced by codec-capability interfaces
+> (`IFlacWriter`, `IFlacReader`, `IPcmEncoder`, `IPcmDecoder`) plus a
+> `SampleLibService` that owns sample import, storage and playback.
+> See `notes/constellatts-audio-layer-decision.md` for the design notes.
 
 ---
 
@@ -221,11 +230,11 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 
 ## Writing a Plugin
 
-1. Create a class library targeting `net9.0`
+1. Create a class library targeting `net10.0`
 2. Reference `ConstellaTTS.SDK` and optionally `ConstellaTTS.SDK.IPC`
 3. Implement `IConstellaModule`
 4. Register services in `Build()`
-5. Optionally mount UI into existing slots via `DeferMount`
+5. Mount UI by issuing navigation requests against `Regions.*` IDs
 6. Drop compiled DLL into `./plugins/`
 
 ---
@@ -236,9 +245,12 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 |-------|-------|
 | **Done** | IPC daemon — named-pipe transport, routing, streaming, backpressure, cancel |
 | **Done** | Timeline editor — track list, ruler, minimap, block create/select/delete, undoable history |
-| **Now** | Domain persistence — `.wwv` project format, save/load, dirty tracking |
-| **Next** | First real TTS adapter (Chatterbox), waveform extraction, audio playback wiring |
-| **Next** | Section editor v2 — emotion slider, seed scrubber, model dropdown, sound-bank drop target |
+| **Done** | Core namespace refactor — type-based folders, dead-code purge |
+| **Now** | Audio runtime layer — `IFlacWriter`/`IFlacReader` + `IAudioPlayer` on OwnAudioSharp.Basic |
+| **Now** | Sample library v2 — `ISampleLibService`, file dialog + drag-drop import, playback wiring |
+| **Next** | Domain persistence — `.wwv` project format, save/load, dirty tracking |
+| **Next** | First real TTS adapter (Chatterbox), waveform extraction |
+| **Soon** | Section editor v2 — sample picker modal, generation cache, listen-while-generating |
 | **Soon** | Plugin manifest system, adapter generator, drag & drop model install |
 | **Later** | Duration control (Rubberband, ScalerGAN, IndexTTS-2), export pipeline |
 
@@ -248,49 +260,50 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 
 ### ✅ Platform & Architecture
 - [x] Avalonia UI selected (Skia-based, cross-platform, WPF heritage)
-- [x] Solution structure — SDK / SDK.IPC / Core / Avalonia separation
+- [x] Solution structure — SDK / SDK.IPC / Core / Avalonia / Domain separation
 - [x] Plugin module system — `IConstellaModule`, `ConstellaModuleRegistry`, topological sort
 - [x] `ConstellaApp` singleton — central application context
 - [x] DI via `Microsoft.Extensions.DependencyInjection`
+- [x] Type-based folder layout in Core (`Managers/`, `Services/`, `Controls/`, `Behaviors/`, `Converters/`, `Layouts/`, `Recorders/`, `Misc/`, `ViewModels/`, `Views/`, `Windows/`, `Actions/`)
 
-### ✅ Window & Layout System
+### ✅ Window & Region System
 - [x] Custom title bar — ribbon menu integrated, native chrome removed
-- [x] `MainWindow` — shell with layout slot
-- [x] `MainLayout` — DAW chrome (toolbar, logo row, section panel, timeline)
-- [x] `IWindowManager` + `IWindowFactory` — window lifecycle, DI-resolved instances
-- [x] Deferred mount — plugins register UI mounts before window is ready
-
-### ✅ Slot System
-- [x] `SlotType` enum — Window / Layout / Page / Control
-- [x] `SlotNode` + `SlotMap` — hierarchical slot tree
-- [x] `WindowDescriptor` — window declares its own slot map
-- [x] `ISlotService` — slot registration, mount/unmount, recursive child slot search
-- [x] Layout mount exposes child slots — plugins mount into them
+- [x] `MainWindow` — shell with named regions
+- [x] `MainLayout` — DAW chrome (toolbar, logo row, content, status bar) declared via `RegionControl`
+- [x] `IRegionManager` + `RegionManager` — visual-tree scan, mount/unmount by region ID
+- [x] Window lifecycle — `NavigationManager` resolves windows from DI, no separate factory layer
 
 ### ✅ Navigation
-- [x] `NavigationRequest` hierarchy — Open/Close/Mount/Unmount/SwapLayout/Queue
+- [x] `NavigationRequest` hierarchy — Open/Close window, Show/Hide flyout, Mount/Unmount region, Queue
 - [x] `NavigationBuilder` — fluent API
-- [x] `INavigationManager` — orchestrates slot + window + layout operations
-- [x] Navigation pushes to `IHistoryManager` — fully undoable
+- [x] `INavigationManager` — orchestrates window + region operations
+- [x] `Navigate(...)` pushes to `IHistoryManager` — fully undoable
+- [x] `ApplyOnly(...)` for bootstrap — initial window+mounts excluded from history (so Ctrl+Z can't kill the app)
 
 ### ✅ History
-- [x] `IHistoryManager` + `HistoryManager` — stack-based undo/redo
-- [x] `IHistoryEntry` — each operation owns its own rollback
-- [x] `NavigationHistoryEntry` — navigation is reversible
+- [x] `IHistoryManager` + `HistoryManager` — stack-based undo/redo; merge logic stays out, history layer is dumb on purpose
+- [x] `IReversible` — actions produce their inverse on `Reverse()`
+- [x] `IEffect` — action dispatches side-effect actions; carrier is the single history entry, Ctrl+Z reverses all
+- [x] `SelectAction : IReversible` — each click its own history entry (Vim/Spine2D jumplist semantics)
+- [x] `ViewportChangeAction : IReversible, IEffect` — snapshots zoom + scroll together; Ctrl+Z restores viewport
+- [x] `IViewportHistoryRecorder` — Touch/Flush debounce; input-agnostic (wheel, minimap, keyboard all coalesce into one entry)
+- [x] `ViewportHistoryRecorder` — 250 ms DispatcherTimer debounce, no-op filter (FROM == TO skipped)
+- [x] Block create, delete, bump, select, viewport scroll/zoom — every edit undoable
 
 ### ✅ Theme System
 - [x] `IThemeProvider` — global/per-theme style registration, JSON color theme loading
 - [x] `ThemeProvider` — `RegisterGlobal`, `RegisterForTheme`, `LoadColorTheme`, `ApplyTheme`
-- [x] Module self-registers its own styles via `ThemeProvider` — no hardcoded `App.axaml` imports
+- [x] Module self-registers its own styles — no hardcoded `App.axaml` imports
 
 ### ✅ UI & Controls
 - [x] Füme + neon purple color scheme (`#0D0D14` base, `#7c6af7 → #d060ff` gradient)
 - [x] `MainTheme.axaml` — all colors in one resource dictionary
 - [x] `PlayerButton` + `PlayerIcon` — vector icon controls, path-based, color via `Foreground`
 - [x] Transport controls — GoToStart / Play / Stop with hover + press states
-- [x] Timeline ruler with accent line
-- [x] Playhead — gradient vertical line
 - [x] ConstellaTTS logo — SVG with crescent, constellation, waveform
+- [x] `ConstellaSlider` — custom `RangeBase`; Solid / Gradient / Emotion modes; Emotion mode samples `EmotionColors` for dynamic thumb color
+- [x] `EmotionColors` — 5-stop sRGB interpolation: blue → green → amber → orange → red
+- [x] Sample Library toggle flicker fix — outside-click detection via named `SampleLibraryButton` ancestor lookup
 
 ### ✅ Exception Handling
 - [x] `ConstellaException` base class — normalized exception hierarchy (SDK)
@@ -322,14 +335,6 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [ ] Source-generated typed client — `await client.Fake.GenerateAsync(...)`
 - [ ] `ILogger<IPCClient>` integration — promote ad-hoc `[ipc]` lines to proper `LogLevel.Debug`, let hosts filter via the usual logging config
 
-### ✅ Audio Streaming Pipeline
-- [x] `BufferWriteStream` — single writer, appends PCM chunks to temp `.raw` file
-- [x] `BufferReadStream` — multi-reader, seek by byte offset or seconds, `IAsyncEnumerable<byte[]>`
-- [x] `BufferStreamer` — per-job coordinator, `CreateReader(atOffset)` / `CreateReader(atSeconds)`
-- [x] `AudioFormat` — sample rate/channel/bit depth, `SecondsToBytes` / `BytesToSeconds`
-- [x] `SoundService` — job index, `StartJob` / `Append`, `JobStarted` event
-- [x] Flush policy — flush to disk on threshold OR `final=true`, then Opus encode placeholder
-
 ### ✅ Timeline Editor
 
 **Viewport & geometry**
@@ -343,6 +348,9 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] `TrackListViewModel.Tracks` — observable collection with `Reorder` / `AddTrack` / `RemoveTrack`
 - [x] `TrackViewModel` — `Track` primitive binding + drag-ghost state
 - [x] Drag-to-reorder — header press, floating preview, 3-stage release animation (close source → open target → commit)
+- [x] Track rename — double-click or right-click header → inline `TextBox`; Enter/LostFocus commit, Escape reverts to snapshot
+- [x] Track add — context bar + Track button, palette-cycled accent
+- [x] `RemoveTrackAction` — history-tracked track delete (Ctrl+Z restores)
 
 **Blocks (Sections + Stages)**
 - [x] `IStageViewModel` — shared geometry (StartSec/DurationSec/EndSec/Label/Bg/AccentColor)
@@ -350,7 +358,7 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] `StageViewModel` — dashed-outline visual annotation, no TTS pipeline
 - [x] `SectionViewModel` — full TTS block with emotion gradient strip + dirty indicator
 - [x] Polymorphic `Sections` collection — `ObservableCollection<IStageViewModel>`
-- [x] `ItemContainerTheme` positions `ContentPresenter` via `Canvas.Left` — fixes stacked-at-origin bug in nested `DataTemplate`s
+- [x] `TimelineItemsPanel` — custom `Panel` replacing `Canvas`; arranges children directly via `IStageViewModel` time coords; hit-test bounds = visual bounds
 
 **Ruler**
 - [x] `TimelineRulerControl` — self-drawing with nice-number tick ladder (0.05s → 3600s)
@@ -379,7 +387,9 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] `ISelectionService` — `SelectedBlock` + `SelectedTrack`
 - [x] Click block in Select mode → selection + open editor overlay
 - [x] Click empty canvas → clear selection + close editor
-- [x] Block editor overlay — duration/start/end chips, label `TextBox`, close button
+- [x] Block editor v2 — seed row (`◀ value ▶ | 🎲` + advance mode), engine ComboBox, multiline TextBox, emotion + temperature `ConstellaSlider`s, sample chip, Generate button
+- [x] `SeedAdvanceMode` — Fixed / Increment / Decrement / Random; `AdvanceSeed()` after each successful generation
+- [x] Echo control — `_suppressLabelEcho` + `_suppressSectionEcho` flags prevent VM↔UI oscillation
 - [x] Editor auto-positions below selected block, viewport-aware
 - [x] Editor auto-collapses when block scrolls fully off-screen
 - [x] Left/right clamp — editor never overlaps track-header column or spills offscreen
@@ -395,11 +405,28 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] `PointerCaptureLost` + `_inReleaseHandler` re-entry guard — synchronous `Capture(null)` during release doesn't wipe drag state
 - [x] Block editor pointer isolation — presses inside don't leak into canvas gestures
 
-**History**
-- [x] `IReversible` — actions produce their inverse on `Reverse()`
-- [x] `HistoryManager` — undo/redo stacks, push clears redo, Ctrl+Z / Ctrl+Y
-- [x] `RollbackFailedException` / `UndoFailedException` / `RedoFailedException` — typed failures preserve rollback invariants
-- [x] Block create, delete, bump all covered — every edit is undoable
+### 🔲 Audio Runtime (in design)
+- [x] OwnAudioSharp.Basic chosen as cross-platform audio backend (Win/Linux/macOS, MIT, miniaudio/PortAudio core)
+- [x] NAudio-based prototype removed — Windows-only constraint incompatible with cross-platform target
+- [x] `IFileWriter` / `IFileReader` / `IPcmEncoder` / `IPcmDecoder` capability interfaces
+- [x] `IFlacWriter : IFileWriter, IPcmEncoder` / `IFlacReader : IFileReader, IPcmDecoder`
+- [ ] `IAudioPlayer` interface — PCM stream + `AudioFormat`, Play/Stop
+- [ ] `FlacWriter` / `FlacReader` concrete drivers on OwnAudioSharp.Basic
+- [ ] FLAC encode capability spike — confirm OwnAudioSharp.Basic supports it (decode is documented; encode flagged as "to verify")
+- [ ] `OwnAudioSharpAudioPlayer` — concrete player wired to the mixer
+
+### 🔲 Sample Library (in design)
+- [x] `ISampleProvider` / `ISampleImporter` legacy interfaces removed — clean slate for v2
+- [x] `FlacSampleImporter` (NAudio-based) removed
+- [ ] `ISampleLibService` — filesystem-as-db: `List`, `AddAsync`, `Remove`, `Play`
+- [ ] `ISampleLibraryViewModel` — owns the observable collection bound by the picker
+- [ ] `SampleLibService` concrete — uses `IFlacWriter` / `IFlacReader` / `IAudioPlayer`
+- [ ] `UploadButton.Click` → `IStorageProvider.OpenFilePickerAsync` (filter: mp3, wav, flac, ogg, m4a)
+- [ ] `DragDrop.AllowDrop` + `Drop` on `SampleLibraryWindow` — path extract → `AddAsync`
+- [ ] DI registration in `ConstellaTTSCoreModule`
+- [ ] Sample picker modal in block editor — replaces cycling chip with browseable list + audio scrub
+- [ ] Section ↔ VM persistence: `VoiceSample.Id`, `EngineId`, `Temperature`, `SeedMode`
+- [ ] `EngineDescriptor.SupportsEmotion=false` → hide emotion slider per-engine
 
 ### 🔲 Project & Persistence
 - [ ] `Section` domain model — text, seed, voice_ref, WER, QC metadata
@@ -424,13 +451,12 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [ ] Extension plugin type (`IExtensionPlugin` — C# assembly, new UI panels)
 
 ### 🔲 Audio Generation
-- [ ] Opus encoder integration — Concentus or libopus P/Invoke
-- [ ] NAudio playback — `BufferedWaveProvider` fed from `BufferReadStream`
 - [ ] Space → generate + play selected section
 - [ ] Shift+Space → queue from selected section
 - [ ] Whisper large-v3-turbo integration — transcript, WER quality control
 - [ ] Generation cache — SHA256 hash (text + voice_ref + emotion + seed + engine + extras)
 - [ ] Global cache (`AppData`) + project-local cache (`.wwv/generated/`)
+- [ ] Listen-while-generating toggle (▶G) — dirty section enter triggers generation
 
 ### 🔲 Duration Control
 - [ ] `DurationStrategy` — Auto / Rubberband / Interpolate / Generate
@@ -474,6 +500,7 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [Avalonia UI](https://avaloniaui.net)
 - [CommunityToolkit.Mvvm](https://learn.microsoft.com/en-us/dotnet/communitytoolkit/mvvm/)
 - [MessagePack for C#](https://github.com/MessagePack-CSharp/MessagePack-CSharp)
+- [OwnAudioSharp](https://github.com/ModernMube/OwnAudioSharp)
 - [ScalerGAN](https://github.com/MLSpeech/scaler_gan)
 - [IndexTTS-2](https://github.com/index-tts/index-tts)
 - [Chatterbox TTS Server](https://github.com/devnen/Chatterbox-TTS-Server)
