@@ -14,6 +14,7 @@ using ConstellaTTS.SDK.App;
 using ConstellaTTS.SDK.Engine;
 using ConstellaTTS.SDK.Exceptions;
 using ConstellaTTS.SDK.History;
+using ConstellaTTS.SDK.IO;
 using ConstellaTTS.SDK.IPC;
 using ConstellaTTS.SDK.Theme;
 using ConstellaTTS.SDK.Timeline;
@@ -52,6 +53,7 @@ public sealed class ConstellaTTSCoreModule : IConstellaModule
         services.AddSingleton<INavigationManager, NavigationManager>();
         services.AddSingleton<IExceptionHandler,  ExceptionHandler>();
         services.AddSingleton<ExceptionHandler>();
+        services.AddSingleton<IFileWriter,        LocalFileWriter>();
 
         // Viewport history recorder — single instance shared by every
         // viewport input source (track-canvas wheel, minimap drag, etc.).

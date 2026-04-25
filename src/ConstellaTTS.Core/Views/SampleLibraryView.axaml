@@ -23,6 +23,7 @@
 
                 <Button Grid.Column="1"
                         x:Name="UploadButton"
+                        Click="OnUploadClick"
                         Padding="8,3"
                         FontSize="10"
                         Background="#1F7C6AF7"
