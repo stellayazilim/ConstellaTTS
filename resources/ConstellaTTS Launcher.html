@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>ConstellaTTS · Launcher</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* ══ THEME-AGNOSTIC TOKENS — same as Main Window ══ */
+  --void-1: #08080f; --void-2: #0D0D14; --void-3: #111119;
+  --coal-1: #13131E; --coal-2: #14141E; --coal-3: #16161F; --coal-4: #18182A; --coal-5: #1A1A2A; --coal-6: #1C1C2E;
+  --mist-1: #252538; --mist-2: #32324A; --mist-3: #44446A;
+  --dusk-1: #3A3A55; --dusk-2: #444455; --dusk-3: #888899; --dusk-4: #D0D0E8;
+  --neon-violet: #7c6af7; --neon-blue: #60aaff; --neon-pink: #d060ff; --neon-rose: #ff60a0; --neon-cyan: #50e0ff;
+  /* Semantic aliases */
+  --bg-app: var(--void-2); --bg-surface: var(--coal-1); --bg-elevated: var(--coal-5); --bg-toolbar: var(--coal-3);
+  --bg-ribbon: var(--void-3); --bg-side: var(--coal-2);
+  --border-subtle: var(--mist-1); --border-mid: var(--mist-2); --border-strong: var(--mist-3);
+  --fg-primary: var(--dusk-4); --fg-secondary: var(--dusk-3); --fg-muted: var(--dusk-2);
+  --accent: var(--neon-violet); --accent-alt: var(--neon-pink);
+  --gradient-brand: linear-gradient(90deg, var(--neon-blue), var(--neon-violet) 50%, var(--neon-pink));
+  --font-brand: 'Orbitron', sans-serif;
+  --font-ui:    'DM Sans', sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+  --r-xs: 3px; --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 12px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  font-family:var(--font-ui);
+  background:var(--void-1);
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;
+  color:var(--fg-primary);
+  /* subtle starfield-ish ambient */
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(124,106,247,.12), transparent 40%),
+    radial-gradient(circle at 82% 78%, rgba(208,96,255,.08), transparent 45%),
+    radial-gradient(circle at 50% 100%, rgba(96,170,255,.06), transparent 60%);
+}
+
+/* ══ Reusable controls ══════════════════════════════════════════ */
+/* XAML: Bunlar Avalonia Styles olarak kalmali — proje genelinde reuse. */
+.btn{
+  font-family:var(--font-ui);font-size:12px;font-weight:500;
+  padding:8px 14px;border-radius:var(--r-md);
+  border:1px solid var(--border-mid);
+  background:var(--bg-elevated);color:var(--fg-primary);
+  cursor:pointer;transition:all .12s;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.btn:hover{background:var(--bg-toolbar);border-color:var(--border-strong);}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--fg-secondary);}
+.btn.ghost:hover{background:var(--bg-elevated);color:var(--fg-primary);}
+.btn.neon-violet{
+  background:rgba(124,106,247,.14);border-color:rgba(124,106,247,.45);color:var(--neon-violet);
+}
+.btn.neon-violet:hover{background:rgba(124,106,247,.24);box-shadow:0 0 14px rgba(124,106,247,.35);}
+.btn.neon-blue{
+  background:rgba(96,170,255,.10);border-color:rgba(96,170,255,.40);color:var(--neon-blue);
+}
+.btn.neon-blue:hover{background:rgba(96,170,255,.20);box-shadow:0 0 14px rgba(96,170,255,.30);}
+
+/* Input field — generic */
+.input-field{
+  display:flex;align-items:center;gap:6px;
+  background:var(--bg-elevated);border:1px solid var(--border-mid);
+  border-radius:var(--r-md);padding:0 4px 0 10px;height:32px;
+  transition:border-color .12s;
+}
+.input-field:focus-within{border-color:rgba(124,106,247,.5);}
+.input-field input{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--fg-primary);font-size:12px;font-family:var(--font-ui);
+}
+.input-field input::placeholder{color:var(--fg-muted);}
+.input-field .icon-btn{
+  width:24px;height:24px;border-radius:var(--r-sm);border:none;
+  background:transparent;color:var(--fg-muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .12s,color .12s;
+}
+.input-field .icon-btn:hover{background:var(--bg-toolbar);color:var(--fg-primary);}
+
+/* ══ Window chrome ═════════════════════════════════════════════ */
+.window{
+  width:880px;height:640px;
+  background:var(--bg-app);
+  border:1px solid var(--border-mid);
+  border-radius:var(--r-xl);
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  position:relative;
+  box-shadow:0 32px 80px rgba(0,0,0,.85), 0 0 0 1px rgba(124,106,247,.06);
+}
+
+/* Custom titlebar */
+.titlebar{
+  height:32px;flex-shrink:0;
+  background:var(--bg-ribbon);
+  border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:stretch;
+  -webkit-app-region:drag;
+}
+.titlebar-spacer{flex:1;}
+.titlebar-title{
+  display:flex;align-items:center;padding:0 12px;
+  font-size:11px;color:var(--fg-muted);
+  font-family:var(--font-mono);letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.win-controls{display:flex;align-items:stretch;-webkit-app-region:no-drag;}
+.win-btn{
+  width:40px;height:32px;background:transparent;border:none;
+  color:var(--fg-secondary);cursor:pointer;font-size:11px;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .1s,color .1s;
+}
+.win-btn:hover{background:var(--bg-elevated);color:var(--fg-primary);}
+.win-btn.close:hover{background:#C42B2B;color:white;}
+
+/* ══ Body ══════════════════════════════════════════════════════ */
+.body{flex:1;display:flex;min-height:0;overflow:hidden;}
+
+/* LEFT — brand + actions */
+.left{
+  width:340px;flex-shrink:0;
+  background:var(--bg-side);
+  border-right:1px solid var(--border-subtle);
+  display:flex;flex-direction:column;
+  padding:36px 32px 24px;
+  position:relative;
+  overflow:hidden;
+}
+.left::after{
+  /* subtle radial behind the logo */
+  content:'';position:absolute;top:-60px;left:-60px;
+  width:280px;height:280px;border-radius:50%;
+  background:radial-gradient(circle, rgba(124,106,247,.18), transparent 70%);
+  pointer-events:none;
+}
+.brand{position:relative;z-index:2;display:flex;flex-direction:column;align-items:flex-start;gap:14px;margin-bottom:36px;}
+.logo-svg{width:64px;height:64px;}
+.wordmark{
+  font-family:var(--font-brand);font-size:22px;font-weight:700;letter-spacing:2.5px;
+  background:var(--gradient-brand);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;color:transparent;
+}
+.tagline{font-size:11px;color:var(--fg-muted);font-family:var(--font-mono);letter-spacing:.12em;margin-top:-8px;}
+.version-pill{
+  font-family:var(--font-mono);font-size:10px;color:var(--neon-cyan);
+  background:rgba(80,224,255,.06);border:1px solid rgba(80,224,255,.18);
+  border-radius:var(--r-sm);padding:2px 6px;letter-spacing:.05em;
+}
+
+/* Action stack */
+.actions{position:relative;z-index:2;display:flex;flex-direction:column;gap:10px;margin-top:8px;}
+.action-card{
+  background:var(--bg-elevated);border:1px solid var(--border-mid);
+  border-radius:var(--r-lg);padding:14px;
+  cursor:pointer;transition:all .15s;
+  display:flex;align-items:center;gap:12px;
+  text-align:left;
+}
+.action-card:hover{
+  border-color:var(--border-strong);
+  background:var(--bg-toolbar);
+  transform:translateY(-1px);
+}
+.action-card.primary:hover{
+  border-color:var(--neon-violet);
+  box-shadow:0 6px 20px rgba(124,106,247,.25);
+}
+.action-card.secondary:hover{
+  border-color:var(--neon-blue);
+  box-shadow:0 6px 20px rgba(96,170,255,.18);
+}
+.action-icon{
+  width:36px;height:36px;flex-shrink:0;border-radius:var(--r-md);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-weight:700;font-size:14px;
+}
+.action-card.primary .action-icon{
+  background:rgba(124,106,247,.14);
+  color:var(--neon-violet);
+  border:1px solid rgba(124,106,247,.28);
+}
+.action-card.secondary .action-icon{
+  background:rgba(96,170,255,.10);
+  color:var(--neon-blue);
+  border:1px solid rgba(96,170,255,.28);
+}
+.action-text{display:flex;flex-direction:column;min-width:0;}
+.action-title{font-size:13px;font-weight:600;color:var(--fg-primary);}
+.action-sub{font-size:11px;color:var(--fg-muted);margin-top:2px;}
+.action-shortcut{
+  margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--fg-muted);
+  background:var(--bg-ribbon);border:1px solid var(--border-subtle);
+  border-radius:var(--r-xs);padding:2px 5px;
+}
+
+/* Footer in left col */
+.left-footer{margin-top:auto;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--fg-muted);font-family:var(--font-mono);letter-spacing:.05em;}
+.left-footer .dot{width:5px;height:5px;border-radius:50%;background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.6);}
+
+/* RIGHT — recent projects */
+.right{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+.right-header{
+  height:48px;flex-shrink:0;
+  display:flex;align-items:center;
+  padding:0 22px;gap:12px;
+  border-bottom:1px solid var(--border-subtle);
+  background:var(--bg-ribbon);
+}
+.right-title{font-size:11px;font-weight:500;color:var(--fg-muted);letter-spacing:.12em;text-transform:uppercase;}
+.right-count{font-family:var(--font-mono);font-size:10px;color:var(--fg-muted);background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--r-xs);padding:1px 6px;}
+.search-wrap{margin-left:auto;width:180px;}
+.search-wrap .input-field{height:26px;padding-left:8px;}
+.search-wrap input{font-size:11px;}
+
+/* Recent list — virtualized in XAML
+   XAML: ItemsRepeater + VirtualizingStackPanel. ItemsSource bind ile.
+   ContextMenu: Aç / Konumunda Göster / Listeden Kaldır.
+*/
+.recent-list{flex:1;overflow-y:auto;padding:6px 0;}
+.recent-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 22px;cursor:pointer;
+  transition:background .1s;position:relative;
+}
+.recent-item:hover{background:var(--bg-elevated);}
+.recent-item:hover .ri-actions{opacity:1;}
+.recent-item:not(:last-child)::after{
+  content:'';position:absolute;left:22px;right:22px;bottom:0;height:1px;
+  background:var(--border-subtle);
+}
+.ri-thumb{
+  width:44px;height:44px;flex-shrink:0;
+  border-radius:var(--r-md);
+  background:var(--bg-elevated);
+  border:1px solid var(--border-subtle);
+  position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+/* Mini-timeline thumbnail rendered as bars inside the thumb */
+.ri-thumb .mini-bars{
+  position:absolute;left:5px;right:5px;bottom:7px;
+  display:flex;align-items:flex-end;gap:1px;height:18px;
+}
+.ri-thumb .mini-bars span{
+  flex:1;border-radius:1px;
+  background:linear-gradient(to top,var(--neon-violet),var(--neon-pink));
+  opacity:.7;
+}
+.ri-thumb .mini-track{
+  position:absolute;left:5px;right:5px;
+  height:2px;border-radius:1px;background:rgba(255,255,255,.12);
+}
+.ri-thumb .mini-track:nth-child(1){top:7px;}
+.ri-thumb .mini-track:nth-child(2){top:13px;}
+.ri-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.ri-name{font-size:13px;font-weight:500;color:var(--fg-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ri-name .pinned-icon{color:var(--neon-cyan);font-size:10px;margin-right:4px;}
+.ri-path{font-family:var(--font-mono);font-size:10.5px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ri-meta{display:flex;align-items:center;gap:14px;font-family:var(--font-mono);font-size:10px;color:var(--fg-muted);min-width:140px;flex-shrink:0;}
+.ri-meta .ri-meta-item{display:flex;align-items:center;gap:4px;white-space:nowrap;}
+.ri-meta .swatch{width:7px;height:7px;border-radius:50%;background:var(--neon-violet);}
+.ri-actions{
+  display:flex;gap:4px;opacity:0;transition:opacity .15s;
+}
+.ri-action-btn{
+  width:24px;height:24px;border-radius:var(--r-sm);
+  background:transparent;border:1px solid transparent;
+  color:var(--fg-muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:12px;
+  transition:all .1s;
+}
+.ri-action-btn:hover{background:var(--bg-toolbar);color:var(--fg-primary);border-color:var(--border-mid);}
+.ri-action-btn.danger:hover{color:#ff6b6b;border-color:rgba(255,107,107,.3);}
+
+/* Empty state */
+.recent-empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:var(--fg-muted);
+}
+.recent-empty .empty-icon{font-size:36px;opacity:.4;}
+.recent-empty .empty-text{font-size:12px;}
+.recent-empty .empty-sub{font-size:10.5px;color:var(--fg-muted);font-family:var(--font-mono);}
+
+/* ══ MODAL — file picker preview ══════════════════════════════ */
+/* XAML: bu modal pratik olarak StorageProvider.OpenFolderPickerAsync()
+   ile native dialog acilacak — burada sadece visual hint amacli.   */
+.modal-overlay{
+  position:absolute;inset:0;background:rgba(8,8,15,.7);backdrop-filter:blur(4px);
+  display:none;align-items:center;justify-content:center;z-index:200;
+}
+.modal-overlay.open{display:flex;}
+.modal{
+  width:520px;background:var(--bg-surface);
+  border:1px solid var(--border-mid);border-radius:var(--r-xl);
+  box-shadow:0 24px 60px rgba(0,0,0,.85);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.modal-header{
+  padding:14px 18px;border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:center;gap:8px;
+}
+.modal-header .modal-title{font-size:12px;font-weight:600;color:var(--fg-primary);letter-spacing:.06em;}
+.modal-header .modal-close{
+  margin-left:auto;background:transparent;border:none;color:var(--fg-muted);
+  cursor:pointer;font-size:14px;width:24px;height:24px;border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center;
+}
+.modal-header .modal-close:hover{background:var(--bg-elevated);color:var(--fg-primary);}
+.modal-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;}
+.modal-row{display:flex;flex-direction:column;gap:6px;}
+.modal-label{font-size:11px;color:var(--fg-secondary);font-family:var(--font-mono);letter-spacing:.04em;}
+.modal-footer{
+  padding:12px 18px;border-top:1px solid var(--border-subtle);
+  display:flex;align-items:center;gap:8px;background:var(--bg-ribbon);
+}
+.modal-footer .spacer{flex:1;}
+.modal-hint{font-size:10px;color:var(--fg-muted);font-family:var(--font-mono);}
+
+</style>
+</head>
+<body>
+
+<div class="window">
+
+  <!-- TITLEBAR -->
+  <div class="titlebar">
+    <div class="titlebar-title">ConstellaTTS · Launcher</div>
+    <div class="titlebar-spacer"></div>
+    <div class="win-controls">
+      <button class="win-btn">─</button>
+      <button class="win-btn">▢</button>
+      <button class="win-btn close">✕</button>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- LEFT: brand + actions -->
+    <div class="left">
+      <div class="brand">
+        <svg class="logo-svg" viewBox="0 0 36 36" fill="none">
+          <defs>
+            <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#60aaff"/><stop offset="50%" stop-color="#7c6af7"/><stop offset="100%" stop-color="#9b4dca"/></linearGradient>
+            <radialGradient id="sg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="#6090ff" stop-opacity="0"/></radialGradient>
+            <filter id="gf"><feGaussianBlur stdDeviation="1" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <path fill="none" stroke="url(#lg1)" stroke-width="3.5" stroke-linecap="round" d="M 24,5 A 13,13 0 1 0 24,31"/>
+          <g fill="none" stroke="#a0b4e0" stroke-width="0.8" opacity="0.5"><line x1="20" y1="8" x2="13" y2="15"/><line x1="13" y1="15" x2="11" y2="21"/><line x1="13" y1="15" x2="18" y2="18"/><line x1="18" y1="18" x2="25" y2="14"/></g>
+          <circle cx="20" cy="8" r="4" fill="url(#sg)" opacity="0.4"/><circle cx="20" cy="8" r="1.5" fill="#fff" filter="url(#gf)"/>
+          <polygon points="20,5.5 20.8,7.8 23.1,8 20.8,8.2 20,10.5 19.2,8.2 16.9,8 19.2,7.8" fill="#fff" opacity="0.9"/>
+          <circle cx="25" cy="14" r="3" fill="url(#sg)" opacity="0.35"/><circle cx="25" cy="14" r="1.2" fill="#fff" filter="url(#gf)"/>
+          <polygon points="25,11.8 25.7,13.8 27.7,14 25.7,14.2 25,16.2 24.3,14.2 22.3,14 24.3,13.8" fill="#fff" opacity="0.85"/>
+          <circle cx="13" cy="15" r="1.5" fill="url(#sg)" opacity="0.3"/><circle cx="13" cy="15" r="0.8" fill="#fff"/>
+          <circle cx="18" cy="18" r="1.2" fill="url(#sg)" opacity="0.25"/><circle cx="18" cy="18" r="0.7" fill="#fff"/>
+          <circle cx="11" cy="21" r="1" fill="url(#sg)" opacity="0.2"/><circle cx="11" cy="21" r="0.6" fill="#fff"/>
+        </svg>
+        <div>
+          <div class="wordmark">CONSTELLATTS</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+            <span class="tagline">studio · v0.4.2</span>
+            <span class="version-pill">EARLY ACCESS</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="action-card primary" onclick="openModal('open')">
+          <div class="action-icon">⏵</div>
+          <div class="action-text">
+            <div class="action-title">Proje Aç</div>
+            <div class="action-sub">Disktek bir .ctts klasörü seç</div>
+          </div>
+          <div class="action-shortcut">Ctrl+O</div>
+        </button>
+        <button class="action-card secondary" onclick="openModal('new')">
+          <div class="action-icon">+</div>
+          <div class="action-text">
+            <div class="action-title">Yeni Proje</div>
+            <div class="action-sub">İsim ve konum belirle</div>
+          </div>
+          <div class="action-shortcut">Ctrl+N</div>
+        </button>
+      </div>
+
+      <div class="left-footer">
+        <span class="dot"></span>
+        <span>Chatterbox engine · ready</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: recent -->
+    <div class="right">
+      <div class="right-header">
+        <span class="right-title">Tanınan Projeler</span>
+        <span class="right-count" id="recentCount">6</span>
+        <div class="search-wrap">
+          <div class="input-field">
+            <input type="text" placeholder="Ara…" oninput="filterRecent(this.value)">
+          </div>
+        </div>
+      </div>
+      <div class="recent-list" id="recentList"></div>
+    </div>
+
+  </div>
+
+  <!-- MODAL: open / new project -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="modalTitle">Proje Aç</span>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer">
+        <span class="modal-hint" id="modalHint">.ctts klasörü seçilmesi bekleniyor</span>
+        <div class="spacer"></div>
+        <button class="btn ghost" onclick="closeModal()">İptal</button>
+        <button class="btn neon-violet" id="modalConfirm" onclick="confirmModal()">Aç</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══ DATA — recent projects ════════════════════════════════════
+// XAML: List<RecentProjectEntry> ViewModel'da; AppData/recents.json'a serialize.
+// Fields: name, path, lastOpened (Date), trackCount, blockCount, accent, pinned.
+const recentProjects = [
+  { name:'Yıldız Yolcusu — Bölüm I',  path:'D:\\Projects\\YildizYolcusu\\bolum_1.ctts',         lastOpened:'2 saat önce',  tracks:8, blocks:142, accent:'#7c6af7', pinned:true,
+    bars:[14,18,22,28,16,10,8,12,18,24,20,12,8,6,10,16] },
+  { name:'Lyra · Karakter Demosu',    path:'D:\\Projects\\Lyra\\character_demo.ctts',           lastOpened:'Dün',          tracks:4, blocks:38,  accent:'#d060ff', pinned:false,
+    bars:[6,10,14,18,22,18,14,10,8,6,4,2,4,8,12,16] },
+  { name:'Reklam Spotu — Lambda',     path:'C:\\Users\\onur\\Documents\\spots\\lambda_v3.ctts', lastOpened:'3 gün önce',   tracks:2, blocks:8,   accent:'#60aaff', pinned:false,
+    bars:[20,24,18,12,8,4,6,10,14,18,22,18,12,8,6,4] },
+  { name:'Podcast — S2E04',           path:'E:\\Audio\\Podcast\\s2e04.ctts',                    lastOpened:'1 hafta önce', tracks:3, blocks:64,  accent:'#50e0ff', pinned:false,
+    bars:[8,12,16,18,14,10,12,16,20,22,18,14,10,8,6,4] },
+  { name:'Eğitim Modülü A1',          path:'D:\\Projects\\edu\\a1_intro.ctts',                  lastOpened:'2 hafta önce', tracks:5, blocks:96,  accent:'#ff60a0', pinned:false,
+    bars:[10,14,18,22,16,10,6,8,12,16,20,16,12,8,6,4] },
+  { name:'Test Sandbox',              path:'C:\\Users\\onur\\sandbox\\test.ctts',               lastOpened:'1 ay önce',    tracks:1, blocks:4,   accent:'#888899', pinned:false,
+    bars:[4,8,12,8,4,6,10,14,10,6,4,8,12,8,4,2] },
+];
+let filterQ = '';
+
+function renderRecent(){
+  const list = document.getElementById('recentList');
+  const filtered = recentProjects.filter(p =>
+    !filterQ || p.name.toLowerCase().includes(filterQ) || p.path.toLowerCase().includes(filterQ)
+  );
+  document.getElementById('recentCount').textContent = filtered.length;
+  list.innerHTML = '';
+  if (filtered.length === 0) {
+    list.innerHTML = `
+      <div class="recent-empty">
+        <div class="empty-icon">⌕</div>
+        <div class="empty-text">Eşleşen proje yok</div>
+        <div class="empty-sub">"${filterQ}" aramasını temizle veya yeni proje oluştur</div>
+      </div>`;
+    return;
+  }
+  filtered.forEach((p, idx) => {
+    const item = document.createElement('div');
+    item.className = 'recent-item';
+    item.onclick = () => openProject(p);
+    item.innerHTML = `
+      <div class="ri-thumb">
+        <div class="mini-track"></div>
+        <div class="mini-track"></div>
+        <div class="mini-bars">
+          ${p.bars.map(h => `<span style="height:${h}px;background:linear-gradient(to top, ${p.accent}, ${p.accent}aa);opacity:.85"></span>`).join('')}
+        </div>
+      </div>
+      <div class="ri-info">
+        <div class="ri-name">${p.pinned ? '<span class="pinned-icon">★</span>' : ''}${p.name}</div>
+        <div class="ri-path">${p.path}</div>
+      </div>
+      <div class="ri-meta">
+        <div class="ri-meta-item"><span class="swatch" style="background:${p.accent}"></span>${p.tracks} track</div>
+        <div class="ri-meta-item">${p.blocks} block</div>
+        <div class="ri-meta-item" style="min-width:84px">${p.lastOpened}</div>
+      </div>
+      <div class="ri-actions">
+        <button class="ri-action-btn" title="Konumda göster" onclick="event.stopPropagation();showInFolder('${p.path.replace(/\\/g,'\\\\')}')">▦</button>
+        <button class="ri-action-btn danger" title="Listeden kaldır" onclick="event.stopPropagation();removeRecent(${idx})">×</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function filterRecent(q){ filterQ = q.toLowerCase(); renderRecent(); }
+
+function openProject(p){
+  // XAML: ProjectService.OpenAsync(p.path) → MainWindow'u ac, launcher'i kapat.
+  flashStatus(`Açılıyor: ${p.name}`);
+}
+function showInFolder(path){
+  // XAML: Process.Start(new ProcessStartInfo { FileName="explorer", Arguments=$"/select,\"{path}\"" })
+  flashStatus(`Konumda: ${path}`);
+}
+function removeRecent(idx){
+  // XAML: ViewModel'dan kaldir + recents.json'a kaydet
+  flashStatus('Listeden kaldırıldı');
+}
+
+// ═══ MODAL ═════════════════════════════════════════════════════
+let modalMode = 'open';
+function openModal(mode){
+  modalMode = mode;
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalTitle').textContent = mode==='new' ? 'Yeni Proje' : 'Proje Aç';
+  document.getElementById('modalConfirm').textContent = mode==='new' ? 'Oluştur' : 'Aç';
+  const body = document.getElementById('modalBody');
+  if (mode === 'open') {
+    body.innerHTML = `
+      <div class="modal-row">
+        <span class="modal-label">.ctts klasörü</span>
+        <div class="input-field">
+          <input id="openPath" type="text" placeholder="D:\\Projects\\..." readonly value="">
+          <button class="icon-btn" onclick="pickFolder('openPath')" title="Gözat">⊞</button>
+        </div>
+      </div>
+      <div class="modal-row">
+        <span class="modal-hint" style="font-size:10.5px;color:var(--fg-muted);font-family:var(--font-mono);">
+          XAML: StorageProvider.OpenFolderPickerAsync({ Title:"Proje seç" })
+        </span>
+      </div>
+    `;
+    document.getElementById('modalHint').textContent = '.ctts klasörü seçilmesi bekleniyor';
+  } else {
+    body.innerHTML = `
+      <div class="modal-row">
+        <span class="modal-label">Proje adı</span>
+        <div class="input-field">
+          <input id="newName" type="text" placeholder="Yıldız Yolcusu — Bölüm II" autofocus>
+        </div>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label">Konum</span>
+        <div class="input-field">
+          <input id="newPath" type="text" placeholder="D:\\Projects\\" readonly value="">
+          <button class="icon-btn" onclick="pickFolder('newPath')" title="Gözat">⊞</button>
+        </div>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label">Şablon</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn" onclick="selectTemplate(this,'empty')" data-template="empty" style="flex:1;justify-content:center;">Boş</button>
+          <button class="btn neon-violet" onclick="selectTemplate(this,'narrator')" data-template="narrator" style="flex:1;justify-content:center;">Anlatıcı + 2 Karakter</button>
+          <button class="btn" onclick="selectTemplate(this,'podcast')" data-template="podcast" style="flex:1;justify-content:center;">Podcast</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('modalHint').textContent = 'isim ve konum gerekli';
+  }
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
+function pickFolder(targetId){
+  // XAML'da native dialog'a baglanacak. Burada placeholder.
+  const fake = targetId === 'openPath'
+    ? 'D:\\Projects\\YildizYolcusu\\bolum_2.ctts'
+    : 'D:\\Projects\\NewProject';
+  document.getElementById(targetId).value = fake;
+}
+function selectTemplate(btn, kind){
+  document.querySelectorAll('[data-template]').forEach(b=>{
+    b.classList.remove('neon-violet');
+  });
+  btn.classList.add('neon-violet');
+}
+function confirmModal(){
+  // XAML: ProjectService.CreateOrOpen(...) → MainWindow goster.
+  closeModal();
+  flashStatus(modalMode === 'new' ? 'Oluşturuluyor…' : 'Açılıyor…');
+}
+
+// ═══ STATUS toast (footer flash) ═══════════════════════════════
+function flashStatus(text){
+  const f = document.querySelector('.left-footer span:last-child');
+  const orig = f.textContent;
+  f.textContent = text;
+  f.style.color = 'var(--neon-cyan)';
+  setTimeout(()=>{ f.textContent = orig; f.style.color = ''; }, 1800);
+}
+
+// ═══ KEYBINDS ══════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key.toLowerCase() === 'o') { e.preventDefault(); openModal('open'); }
+  else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openModal('new'); }
+  else if (e.key === 'Escape') closeModal();
+});
+
+renderRecent();
+</script>
+</body>
+</html>

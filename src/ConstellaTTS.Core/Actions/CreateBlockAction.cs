@@ -1,5 +1,7 @@
 
+using ConstellaTTS.SDK.App;
 using ConstellaTTS.SDK.History;
+using ConstellaTTS.SDK.Projects;
 using ConstellaTTS.SDK.UI.Actions;
 using ConstellaTTS.SDK.ViewModelContracts;
 
@@ -14,7 +16,8 @@ namespace ConstellaTTS.Core.Actions;
 ///
 /// Used from two call sites:
 ///   • The create gesture in TrackListView: on release, constructs the
-///     action, executes it, then pushes it as the history entry.
+///     action, executes it, persists it, then pushes it as the history
+///     entry.
 ///   • History.Rollback: when <see cref="RemoveBlockAction"/>.Reverse() is
 ///     called (Ctrl+Y to redo a removal), it returns an instance of this
 ///     action to re-add the block.
@@ -23,8 +26,31 @@ namespace ConstellaTTS.Core.Actions;
 /// <see cref="RemoveBlockAction"/> that carries the bump snapshot, which
 /// is itself reversible, so the create⇄remove loop supports unbounded
 /// undo/redo chains with consistent bumping state at every step.
+///
+/// <para>
+/// <b>Persist semantics.</b> <see cref="Persist"/> mirrors what
+/// <see cref="Execute"/> did to the view-model into the persisted
+/// project: every bumped existing block is updated in place
+/// (only its <see cref="BlockData.StartSec"/> changes, since the
+/// bump only moves blocks rightward), then the freshly-created
+/// block is appended to <see cref="TrackData.Blocks"/>. The append
+/// position is what determines the new block's ID
+/// (<c>{trackName}/{blocks.Count - 1}</c>), and that ID matches the
+/// block's index in the VM's <see cref="ITrackViewModel.Sections"/>
+/// collection because both lists grow in the same order — the index
+/// contract that <see cref="ViewModels.TrackViewModel"/>'s
+/// hydration constructor preserves.
+/// </para>
+///
+/// <para>
+/// Self-flushing: after the project is mutated,
+/// <see cref="IProjectManager.SaveAsync"/> is called from inside
+/// <see cref="Persist"/>. The caller's three-step pattern stays
+/// trim — <c>Execute → Persist → Push</c> — and a forgotten flush
+/// in any one call site can't leak unsaved state.
+/// </para>
 /// </summary>
-public sealed class CreateBlockAction : ActionBase, IReversible
+public sealed class CreateBlockAction : ActionBase, IReversible, IPersistable
 {
     private readonly ITrackViewModel         _track;
     private readonly IStageViewModel         _block;
@@ -56,6 +82,39 @@ public sealed class CreateBlockAction : ActionBase, IReversible
     }
 
     /// <inheritdoc />
+    public async Task Persist(IProjectManager manager)
+    {
+        var project = manager.Active;
+        if (project is null) return;
+
+        // Bumped blocks moved rightward in the VM during Execute; mirror
+        // that into the project. Each bump's section is still in the
+        // VM's Sections collection at its original index (bumping
+        // changes StartSec only, never collection position), so
+        // IndexOf gives the same value the persisted blocks list uses.
+        // UpdateBlock with a fresh snapshot is the simplest way to
+        // capture the new StartSec without inventing a per-field
+        // mutator on IConstellaProject.
+        foreach (var bump in _bumpsApplied)
+        {
+            var idx = _track.Sections.IndexOf(bump.Section);
+            if (idx < 0) continue; // defensive: block somehow no longer in VM
+            var blockId = $"{_track.Name}/{idx}";
+            project.UpdateBlock(blockId, BlockSerialization.ToData(bump.Section));
+        }
+
+        // Then append the newly-created block. AddBlock places it at
+        // the end of the track's persisted blocks list, which lines
+        // up with the index Execute landed on in the VM (also an
+        // append) — so the next Persist call against this same
+        // block can derive its ID from Sections.IndexOf without
+        // disagreeing with the on-disk position.
+        project.AddBlock(_track.Name, BlockSerialization.ToData(_block));
+
+        await manager.SaveAsync();
+    }
+
+    /// <inheritdoc />
     /// <remarks>
     /// Returns a <see cref="RemoveBlockAction"/> carrying the bump snapshot
     /// captured during Execute. The caller executes it (block removed,
@@ -64,6 +123,6 @@ public sealed class CreateBlockAction : ActionBase, IReversible
     /// produce a fresh CreateBlockAction that recomputes bumps identically
     /// — round-trippable.
     /// </remarks>
-    public IAction Reverse(IReversible? previous, params object[] args) =>
+    public IAction Reverse(IReversible? previous, object? data = null) =>
         new RemoveBlockAction(_track, _block, _bumpsApplied);
 }

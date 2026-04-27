@@ -7,8 +7,15 @@ namespace ConstellaTTS.Core.ViewModels;
 /// Default <see cref="IToolModeService"/> implementation. Observable so
 /// views can bind button state directly to Tool / CreateType changes.
 ///
-/// Defaults: Create tool with Section as the sub-type — the most common
-/// starting intent when opening a fresh project.
+/// <para>
+/// <b>Defaults: Select tool with Section as the staged create sub-type.</b>
+/// Select is the safer landing spot — a stray click on the canvas just
+/// clears selection rather than dropping a phantom block onto a track.
+/// Users opt into Create deliberately (Ctrl+drag transient override or
+/// the toolbar toggle), and at that point CreateType already remembers
+/// Section as the kind to draw, which is the most common starting
+/// intent when opening a fresh project.
+/// </para>
 ///
 /// EffectiveTool / EffectiveCreateType are computed from (Preview ?? committed);
 /// we manually raise change notifications for them from the source generator
@@ -16,7 +23,7 @@ namespace ConstellaTTS.Core.ViewModels;
 /// </summary>
 public sealed partial class ToolModeService : ObservableObject, IToolModeService
 {
-    [ObservableProperty] private ToolMode    _tool              = ToolMode.Create;
+    [ObservableProperty] private ToolMode    _tool              = ToolMode.Select;
     [ObservableProperty] private CreateType  _createType        = CreateType.Section;
     [ObservableProperty] private ToolMode?   _previewTool;
     [ObservableProperty] private CreateType? _previewCreateType;

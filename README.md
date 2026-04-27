@@ -4,7 +4,7 @@
 
 ConstellaTTS Studio is a local-first desktop application for generating in-game dialogue, cutscene narration, and character voices. It works like a MIDI piano roll: each spoken sentence is a "section" positioned on a timeline, generated independently, and assembled into a final audio output.
 
-**Stack:** Avalonia UI + C# · CommunityToolkit.Mvvm · Python IPC daemon (MessagePack) · OwnAudioSharp.Basic · Embedded Python 3.11
+**Stack:** Avalonia UI + C# · CommunityToolkit.Mvvm · Python IPC daemon (MessagePack) · in-house audio codecs · Embedded Python 3.11
 
 ---
 
@@ -113,6 +113,50 @@ switch; the context bar highlights the override via the viewport's
 `EffectiveTool` so the UI tracks the preview, not just the committed
 state.
 
+#### Persistence
+
+Mutating actions implement three interfaces in parallel — Redux-style
+but split across responsibilities:
+
+```
+IAction       — Execute() applies the change to the VM
+IPersistable  — Persist(IProjectManager) flushes the change to the
+                MessagePack manifest (self-flushing — calls SaveAsync
+                internally, atomic .tmp + rename writes)
+IReversible   — Reverse() returns a fresh action that runs the inverse
+```
+
+The view dispatches via `Execute → Persist → Push` in that order; persist
+failures are logged but never block the history push (the VM has already
+mutated, so refusing to record the action would just leave the user with
+an un-undoable change). The next successful action's persist retries the
+manifest write against current VM state.
+
+```
+ProjectManifest                              ← on-disk root (MessagePack)
+  └── List<TrackData>                        ← Name + Order + Blocks
+        └── List<BlockData>                  ← flat POCO with BlockKind
+              ├── Stage    (label, geometry)   discriminator
+              └── Section  (+ section-only fields:
+                              Emotion?, Temperature?, Seed?, SeedMode?,
+                              EngineId?, VoiceSampleRef?)
+```
+
+VM↔manifest mapping uses append-order indexing — `BlockData[i]` mirrors
+`TrackViewModel.Sections[i]`, no separate ID column. Block IDs surface as
+`{trackName}/{blockIndex}` strings only at the persistence boundary; the
+VM holds object references throughout. Runtime-only state (palette colour,
+`Dirty` flag, `IsDropTarget` highlight) is deliberately excluded from the
+manifest — it's reconstructed from track position on load.
+
+Move/resize is one action (`MoveBlockAction`) that branches on a `Move /
+ResizeLeft / ResizeRight` mode enum. Cross-track is allowed only for the
+`Move` variant; resize is constructor-validated as same-track. The action
+recomputes bumps on the destination track at Execute time, so undo
+restores the pre-move geometry against current track contents (rather
+than replaying a stale bump snapshot, which would mis-resolve if other
+actions had interleaved).
+
 ### IPC Daemon
 
 Daemon is an embedded Python 3.11 subprocess the host launches on demand.
@@ -156,13 +200,27 @@ itself is the rendezvous.
 
 ### Audio I/O
 
-> The runtime audio layer is being rewritten on top of OwnAudioSharp.Basic
-> (cross-platform, MIT). The previous NAudio-based prototype and the
-> stand-in `BufferStreamer` ring-buffer were removed during the namespace
-> refactor and will be replaced by codec-capability interfaces
-> (`IFlacWriter`, `IFlacReader`, `IPcmEncoder`, `IPcmDecoder`) plus a
-> `SampleLibService` that owns sample import, storage and playback.
-> See `notes/constellatts-audio-layer-decision.md` for the design notes.
+> The runtime audio layer is being written from scratch in C#. Two
+> third-party detours — NAudio first, then OwnAudioSharp.Basic — both
+> ran into the same wall: every library covers some formats and quietly
+> drops others (typically on the encode side), and the gap is never the
+> same gap. Wrapping that asymmetry behind capability interfaces was
+> turning the audio layer into a compatibility matrix maintenance task
+> that scaled with the dependency, not with our actual surface.
+>
+> The codecs we ship (PCM/WAV today, FLAC next, Opus later) aren't deep
+> research projects — they're well-specified formats with public
+> reference implementations to validate against. Owning them in-house
+> means the encode and decode sides land together, the format coverage
+> matches our roadmap one-to-one, and the dependency graph stays small.
+> ConstellaTTS is Windows-only for the first release; cross-platform
+> playback gets revisited once the codec layer is stable and there's a
+> concrete reason to ship on Linux/macOS.
+>
+> Capability interfaces — `IFileWriter`, `IFileReader`, `IPcmEncoder`,
+> `IPcmDecoder`, `IAudioPlayer` — are kept as the public seam so call
+> sites stay backend-agnostic; they just happen to be backed by our own
+> implementations now instead of a wrapped library.
 
 ---
 
@@ -246,9 +304,12 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 | **Done** | IPC daemon — named-pipe transport, routing, streaming, backpressure, cancel |
 | **Done** | Timeline editor — track list, ruler, minimap, block create/select/delete, undoable history |
 | **Done** | Core namespace refactor — type-based folders, dead-code purge |
-| **Now** | Audio runtime layer — `IFlacWriter`/`IFlacReader` + `IAudioPlayer` on OwnAudioSharp.Basic |
+| **Done** | Project persistence — MessagePack manifest, Action+IPersistable+IReversible pipeline, atomic save |
+| **Done** | Block edit gestures — Alt+drag move (cross-track), Alt+drag-edge resize, full undo chain |
+| **Done** | Sample assignment — drag-drop from library to section with floating preview, dispatched as undoable `AssignSampleAction` |
+| **Now** | Section field persistence — slider/dropdown edits route through `IMergeable` for drag coalescing |
+| **Now** | Audio runtime layer — in-house `IFlacWriter`/`IFlacReader` + `IAudioPlayer` (no third-party audio dependency) |
 | **Now** | Sample library v2 — `ISampleLibService`, file dialog + drag-drop import, playback wiring |
-| **Next** | Domain persistence — `.wwv` project format, save/load, dirty tracking |
 | **Next** | First real TTS adapter (Chatterbox), waveform extraction |
 | **Soon** | Section editor v2 — sample picker modal, generation cache, listen-while-generating |
 | **Soon** | Plugin manifest system, adapter generator, drag & drop model install |
@@ -345,12 +406,13 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 
 **Track list**
 - [x] `TrackListView` — 200 px header + canvas layout, per-row drop indicator
-- [x] `TrackListViewModel.Tracks` — observable collection with `Reorder` / `AddTrack` / `RemoveTrack`
-- [x] `TrackViewModel` — `Track` primitive binding + drag-ghost state
+- [x] `TrackListViewModel.Tracks` — observable collection with `Reorder` / `AddTrack` / `RemoveTrack` / `InsertTrack` (undo-of-remove)
+- [x] `TrackViewModel` — `Track` primitive binding + drag-ghost state, hydration constructor for project load
 - [x] Drag-to-reorder — header press, floating preview, 3-stage release animation (close source → open target → commit)
 - [x] Track rename — double-click or right-click header → inline `TextBox`; Enter/LostFocus commit, Escape reverts to snapshot
 - [x] Track add — context bar + Track button, palette-cycled accent
-- [x] `RemoveTrackAction` — history-tracked track delete (Ctrl+Z restores)
+- [x] `AddTrackAction` / `RemoveTrackAction` / `RenameTrackAction` / `ReorderTracksAction` — full lifecycle through history + persist
+- [x] `RemoveTrackAction` snapshots the track's `TrackData` + index so undo restores it back into its original slot
 
 **Blocks (Sections + Stages)**
 - [x] `IStageViewModel` — shared geometry (StartSec/DurationSec/EndSec/Label/Bg/AccentColor)
@@ -377,15 +439,24 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] Press inside existing block → anchor snaps to block's `EndSec` (grows rightward)
 - [x] Left-clamp to previous neighbour's end (zoom-independent, time domain)
 - [x] Commit-time cascading right-push — `BlockBumping.Compute` records original positions
-- [x] `CreateBlockAction` / `RemoveBlockAction` — symmetric reversible actions with bump snapshot
+- [x] `CreateBlockAction` / `RemoveBlockAction` — symmetric reversible actions with bump snapshot, persist on Execute
 - [x] Ctrl override = Section, Ctrl+Shift override = Stage (regardless of committed tool)
 - [x] Auto-switch to Select + focus new block on release
 
+**Move & resize gesture**
+- [x] Alt+drag block body → move (same-track or cross-track, follows cursor in time + Y dimension)
+- [x] Alt+drag block left/right edge (3px hot-zone) → resize, anchored opposite edge stays put
+- [x] `MoveBlockAction` — single class branching on `MoveBlockMode` enum (Move / ResizeLeft / ResizeRight)
+- [x] Cross-track constructor-validated — resize is forced same-track, throws on mismatch
+- [x] Floating ghost preview during drag — re-tints on cross-track entry to match destination palette
+- [x] Bump policy mirrors create — destination-track right-cascade, undo restores via fresh bump compute
+- [x] Hover cursor mirrors gesture (LeftSide / RightSide / SizeAll) — Alt-gated so plain clicks stay click-to-select
+
 **Select & edit**
-- [x] `IToolModeService` — Select / Create toggle + Section / Stage sub-type
+- [x] `IToolModeService` — Select / Create / Sample toggle + Section / Stage sub-type, default = Select
 - [x] Preview layer (`PreviewTool` / `PreviewCreateType`) — hover-driven transient override
 - [x] `ISelectionService` — `SelectedBlock` + `SelectedTrack`
-- [x] Click block in Select mode → selection + open editor overlay
+- [x] Click block (no Alt) → selection + open editor overlay; Alt+drag bypasses selection so the editor doesn't flash open at the start of every move
 - [x] Click empty canvas → clear selection + close editor
 - [x] Block editor v2 — seed row (`◀ value ▶ | 🎲` + advance mode), engine ComboBox, multiline TextBox, emotion + temperature `ConstellaSlider`s, sample chip, Generate button
 - [x] `SeedAdvanceMode` — Fixed / Increment / Decrement / Random; `AdvanceSeed()` after each successful generation
@@ -406,35 +477,49 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [x] Block editor pointer isolation — presses inside don't leak into canvas gestures
 
 ### 🔲 Audio Runtime (in design)
-- [x] OwnAudioSharp.Basic chosen as cross-platform audio backend (Win/Linux/macOS, MIT, miniaudio/PortAudio core)
-- [x] NAudio-based prototype removed — Windows-only constraint incompatible with cross-platform target
-- [x] `IFileWriter` / `IFileReader` / `IPcmEncoder` / `IPcmDecoder` capability interfaces
+- [x] In-house codec strategy — third-party audio dependencies (NAudio, OwnAudioSharp.Basic) dropped after both surfaced format-coverage asymmetries that didn't match the project's roadmap
+- [x] `IFileWriter` / `IFileReader` / `IPcmEncoder` / `IPcmDecoder` capability interfaces — kept as the public seam, now backed by our own implementations
 - [x] `IFlacWriter : IFileWriter, IPcmEncoder` / `IFlacReader : IFileReader, IPcmDecoder`
 - [ ] `IAudioPlayer` interface — PCM stream + `AudioFormat`, Play/Stop
-- [ ] `FlacWriter` / `FlacReader` concrete drivers on OwnAudioSharp.Basic
-- [ ] FLAC encode capability spike — confirm OwnAudioSharp.Basic supports it (decode is documented; encode flagged as "to verify")
-- [ ] `OwnAudioSharpAudioPlayer` — concrete player wired to the mixer
+- [ ] `WavWriter` / `WavReader` — RIFF/WAVE container, PCM and float subformats
+- [ ] `FlacWriter` / `FlacReader` — bit-exact against the reference decoder
+- [ ] `AudioPlayer` — Windows playback driver (WASAPI shared-mode by default), interface-isolated so a Linux/macOS backend can land later without touching call sites
 
-### 🔲 Sample Library (in design)
+### ✅ Sample Library — drag-drop assignment
 - [x] `ISampleProvider` / `ISampleImporter` legacy interfaces removed — clean slate for v2
 - [x] `FlacSampleImporter` (NAudio-based) removed
+- [x] `ToolMode.Sample` — third top-level tool; canvas pointer interactions suspend while active so the only valid gesture is sample drag-drop
+- [x] Sample drag source — `DragDrop.DoDragDropAsync` from `SampleLibraryView` items, payload via typed application format `constellatts-sample-ref` (Avalonia 12 `DataFormat<string>`)
+- [x] Drop target on `TrackListView` — `DragDrop.AllowDrop` + `DragOver` / `DragLeave` / `Drop` handlers, section-only acceptance
+- [x] `IStageViewModel.IsDropTarget` runtime flag — section border highlights cyan during drag-over (driven by `DropTargetThicknessConverter`)
+- [x] Sample drag preview adorner — floating cyan-bordered card with sample name follows cursor (Avalonia 12 has no native drag-image API; `RenderTransform` follows pointer per DragOver tick)
+- [x] `AssignSampleAction` — undoable + persistable, idempotent against same-ref drops
+- [x] Hover cursor refresh hooked to `IToolModeService.PropertyChanged` so leaving Sample tool restores Arrow cursor without a pointer move
+
+### 🔲 Sample Library — playback / lifecycle (in design)
 - [ ] `ISampleLibService` — filesystem-as-db: `List`, `AddAsync`, `Remove`, `Play`
 - [ ] `ISampleLibraryViewModel` — owns the observable collection bound by the picker
 - [ ] `SampleLibService` concrete — uses `IFlacWriter` / `IFlacReader` / `IAudioPlayer`
-- [ ] `UploadButton.Click` → `IStorageProvider.OpenFilePickerAsync` (filter: mp3, wav, flac, ogg, m4a)
+- [ ] `UploadButton.Click` → `IStorageProvider.OpenFilePickerAsync` (filter: mp3, wav, flac, ogg, m4a) — currently file-picker only, no drag-drop import
 - [ ] `DragDrop.AllowDrop` + `Drop` on `SampleLibraryWindow` — path extract → `AddAsync`
 - [ ] DI registration in `ConstellaTTSCoreModule`
 - [ ] Sample picker modal in block editor — replaces cycling chip with browseable list + audio scrub
-- [ ] Section ↔ VM persistence: `VoiceSample.Id`, `EngineId`, `Temperature`, `SeedMode`
 - [ ] `EngineDescriptor.SupportsEmotion=false` → hide emotion slider per-engine
 
-### 🔲 Project & Persistence
-- [ ] `Section` domain model — text, seed, voice_ref, WER, QC metadata
-- [ ] `Project` root — tracks, sections, global refs, metadata
-- [ ] `.wwv` file format (ZIP: `project.json` + `refs/` + `generated/` + `meta.json`)
-- [ ] Save/load round-trip, dirty tracking at project level
+### ✅ Project & Persistence
+- [x] `IConstellaProject` — store façade with mutators for tracks (`AddTrack`/`InsertTrack`/`RemoveTrack`/`RenameTrack`/`ReorderTracks`) and blocks (`AddBlock`/`RemoveBlock`/`UpdateBlock`)
+- [x] `IProjectManager` — lifecycle (`OpenAsync` / `CloseAsync`) + self-flushing `SaveAsync` (atomic `.tmp` + rename)
+- [x] MessagePack manifest — `ProjectManifest { Tracks: List<TrackData> }`, `TrackData { Name, Order, Blocks }`, flat `BlockData` POCO with `BlockKind` discriminator
+- [x] Persist contract — actions implement `IAction + IPersistable + IReversible`, dispatched via `Execute → Persist → Push`
+- [x] Hydration — `OpenAsync` rebuilds VM tree from manifest in append order; runtime-only state (palette colour, Dirty flag, IsDropTarget) excluded from manifest
+- [x] Block ID convention — `{trackName}/{blockIndex}` resolved at persistence boundary, parsed at last slash
+- [x] Persist failures don't block history push — VM is the source of truth, next action's save retries
+
+### 🔲 Project & Persistence — remaining
+- [ ] Section field edits (slider/dropdown drag) — route through `IMergeable` for coalescing during drag, persist on commit
 - [ ] WER warning icon on sections (Whisper transcript deviation threshold)
 - [ ] Recent projects menu, autosave timer
+- [ ] Project-level dirty flag + save-on-close prompt
 
 ### 🔲 Python TTS Daemon
 - [ ] First real adapter: Chatterbox Multilingual
@@ -500,7 +585,7 @@ down. Daemon logs land in `src/ConstellaTTS.Daemon/logs/` (gitignored).
 - [Avalonia UI](https://avaloniaui.net)
 - [CommunityToolkit.Mvvm](https://learn.microsoft.com/en-us/dotnet/communitytoolkit/mvvm/)
 - [MessagePack for C#](https://github.com/MessagePack-CSharp/MessagePack-CSharp)
-- [OwnAudioSharp](https://github.com/ModernMube/OwnAudioSharp)
+- [FLAC format specification](https://xiph.org/flac/format.html)
 - [ScalerGAN](https://github.com/MLSpeech/scaler_gan)
 - [IndexTTS-2](https://github.com/index-tts/index-tts)
 - [Chatterbox TTS Server](https://github.com/devnen/Chatterbox-TTS-Server)

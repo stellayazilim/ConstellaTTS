@@ -11,9 +11,9 @@ using ConstellaTTS.Core.Actions;
 using ConstellaTTS.Core.Misc.Logging;
 using ConstellaTTS.Core.ViewModels;
 using ConstellaTTS.Core.Windows;
-using ConstellaTTS.Domain;
 using ConstellaTTS.SDK.Engine;
 using ConstellaTTS.SDK.History;
+using ConstellaTTS.SDK.Projects;
 using ConstellaTTS.SDK.Timeline;
 using ConstellaTTS.SDK.UI.Animation;
 using ConstellaTTS.SDK.UI.Selection;
@@ -24,26 +24,36 @@ using Microsoft.Extensions.Logging;
 namespace ConstellaTTS.Core.Views;
 
 /// <summary>
-/// Track list + timeline view. Dispatches three pointer gestures from one
+/// Track list + timeline view. Dispatches five pointer gestures from one
 /// capture based on press location and tool mode:
 ///
 ///   · REORDER — press on the left 200 px header of any row. Floating
 ///     cursor-attached preview + 3-stage release animation. Always
 ///     available regardless of tool mode.
 ///
-///   · CREATE — press on the canvas area (X ≥ 200 px) with Create tool
+///   · CREATE — press on empty canvas (no block hit) with Create tool
 ///     active, or while holding Ctrl (= Section) / Ctrl+Shift (= Stage)
 ///     as a transient override from Select mode. Paints a preview
 ///     rectangle; on release creates a block and appends it.
 ///
-///   · SELECT — press on canvas with Select tool, no Ctrl. Hit-tests
-///     blocks on the row; on hit selects, on miss clears. Header
-///     click in Select mode (no drag) selects the track itself,
-///     driving the Delete button's "delete track" mode.
+///   · MOVE — press on the middle of an existing block and drag.
+///     Floating preview at the destination position; on release the
+///     block slides to the new position (and possibly a new track
+///     vertically). Bumps colliding blocks rightward via
+///     <see cref="BlockBumping"/>, same rule as create.
 ///
-/// Track header also supports right-click → inline rename (IsEditing
-/// flag flips TextBlock↔TextBox; LostFocus / Enter commit, Escape
-/// reverts to the pre-edit name).
+///   · RESIZE-LEFT / RESIZE-RIGHT — press inside a block within
+///     <see cref="EdgeResizePx"/> pixels of its left or right edge,
+///     and drag. The opposite edge stays anchored, the dragged edge
+///     follows the cursor in the time domain (clamped at 0 and at
+///     the minimum-duration rule). Same bump policy as move.
+///
+///   · SELECT — click (no drag) on canvas. Hit-tests blocks; on hit
+///     selects, on miss clears. Header click in Select mode (no
+///     drag) selects the track itself.
+///
+/// Track header also supports right-click → inline rename and double-
+/// click → inline rename.
 ///
 /// Block geometry is time-domain (StartSec / DurationSec); pixels are
 /// viewport projections computed at the gesture boundary.
@@ -55,6 +65,18 @@ public partial class TrackListView : UserControl
     private const int    DragThresholdPx   = 5;
     private const double MinCreateDurSec   = 0.2;
 
+    /// <summary>
+    /// Width of the resize hot-zone on each block edge, in pixels.
+    /// A press inside this band on the left edge starts a
+    /// <see cref="DragKind.ResizeLeft"/> gesture; on the right edge,
+    /// <see cref="DragKind.ResizeRight"/>. A press in the middle
+    /// region starts <see cref="DragKind.Move"/>. Kept narrow (a
+    /// few pixels) per Kerim's preference — just enough that the
+    /// cursor lands on it deliberately when aiming at the edge,
+    /// not by accident when aiming at the body.
+    /// </summary>
+    private const double EdgeResizePx     = 3;
+
     private const double ZoomFactorPerNotch = 1.15;
     private const double MinPxPerSec        = 4;
     private const double MaxPxPerSec        = 400;
@@ -64,7 +86,7 @@ public partial class TrackListView : UserControl
     private static readonly TimeSpan OpenTargetDuration  = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan FadeInDuration      = TimeSpan.FromMilliseconds(180);
 
-    private enum DragKind { None, Reorder, Create }
+    private enum DragKind { None, Reorder, Create, Move, ResizeLeft, ResizeRight }
 
     private readonly IToolModeService          _toolMode;
     private readonly ITimelineViewport         _viewport;
@@ -72,6 +94,7 @@ public partial class TrackListView : UserControl
     private readonly ISelectionService         _selection;
     private readonly IEngineCatalog            _engineCatalog;
     private readonly IViewportHistoryRecorder  _viewportRecorder;
+    private readonly IProjectManager           _projectManager;
     private readonly ILogger                   _log;
 
     private DragKind _dragKind;
@@ -88,15 +111,59 @@ public partial class TrackListView : UserControl
     private CreateType       _createType;
     private double           _createClampMinSec;
 
+    // ── Move / resize state ─────────────────────────────────────────────
+    //
+    // Captured on press, used during preview update on move, applied
+    // on release to build the MoveBlockAction. Reset() clears all of
+    // these alongside the create/reorder fields so a fresh gesture
+    // starts from a blank slate.
+
+    private IStageViewModel? _moveBlock;
+    private ITrackViewModel? _moveSourceTrack;
+    private int              _moveSourceTrackIdx;
+    private ITrackViewModel? _moveTargetTrack;
+    private int              _moveTargetTrackIdx;
+    private double           _moveOriginalStartSec;
+    private double           _moveOriginalDurationSec;
+
+    /// <summary>
+    /// Distance (in seconds) from the dragged edge / block-start to
+    /// the press point. For Move this is "how far inside the block
+    /// the user clicked" so the block sticks to the cursor at that
+    /// offset. For ResizeLeft / ResizeRight this is the offset
+    /// between cursor and the edge being dragged, always small.
+    /// </summary>
+    private double           _moveCursorOffsetSec;
+
+    /// <summary>
+    /// Live pre-bump preview values, updated each pointer-move tick.
+    /// On release, these become the (newStartSec, newDurationSec)
+    /// passed to <see cref="MoveBlockAction"/>; the action runs the
+    /// canonical bump computation as part of its Execute.
+    /// </summary>
+    private double           _movePreviewStartSec;
+    private double           _movePreviewDurationSec;
+
     private bool _inReleaseHandler;
 
     private Point?   _lastPointerInItems;
     private TopLevel? _keyListenerTopLevel;
 
-    // Inline rename snapshot so Escape can revert to the pre-edit name.
-    // Two-way binding writes straight into Name as the user types, so
-    // without this Escape would keep whatever partial value was there.
+    // Inline rename snapshot so Escape can revert to the pre-edit name,
+    // and so the post-edit RenameTrackAction can be dispatched with
+    // both the old and new values.
     private (ITrackViewModel track, string name)? _renameSnapshot;
+
+    /// <summary>
+    /// Currently-highlighted drop target during a sample drag, or
+    /// null if no section is under the pointer (or the pointer is
+    /// over a stage / empty canvas). Tracked at view-level so the
+    /// previous target's IsDropTarget flag can be cleared cleanly
+    /// when the pointer moves to a new section — without this,
+    /// dragging across multiple sections in a row would leave
+    /// stale highlights behind.
+    /// </summary>
+    private ISectionViewModel? _activeDropTarget;
 
     public TrackListView(
         IToolModeService          toolMode,
@@ -105,6 +172,7 @@ public partial class TrackListView : UserControl
         ISelectionService         selection,
         IEngineCatalog            engineCatalog,
         IViewportHistoryRecorder  viewportRecorder,
+        IProjectManager           projectManager,
         ILoggerFactory            loggerFactory)
     {
         _toolMode         = toolMode;
@@ -113,6 +181,7 @@ public partial class TrackListView : UserControl
         _selection        = selection;
         _engineCatalog    = engineCatalog;
         _viewportRecorder = viewportRecorder;
+        _projectManager   = projectManager;
         _log              = loggerFactory.CreateLogger(LogCategory.WindowProcess);
         InitializeComponent();
         Setup();
@@ -146,6 +215,48 @@ public partial class TrackListView : UserControl
         _history.Push(action);
     }
 
+    /// <summary>
+    /// Run an action through the canonical
+    /// <c>Execute → Persist → Push</c> pattern. The action's
+    /// <see cref="ConstellaTTS.SDK.UI.Actions.IPersistable.Persist"/>
+    /// is self-flushing, so a successful return leaves the manifest
+    /// in sync with the VM and the history stack carrying the
+    /// reversible.
+    ///
+    /// <para>
+    /// <b>Persist failures don't block the push.</b> The VM mutation
+    /// has already happened; refusing to push the action onto the
+    /// history stack would leave the user with an un-undoable
+    /// change. The persist exception is logged and the action goes
+    /// onto the stack as if it had succeeded — the next save
+    /// attempt (any subsequent action's persist, or an explicit
+    /// flush) will retry the manifest write against the current
+    /// VM state.
+    /// </para>
+    /// </summary>
+    private async Task DispatchAsync<TAction>(TAction action)
+        where TAction : ConstellaTTS.SDK.UI.Actions.IAction,
+                        ConstellaTTS.SDK.History.IReversible,
+                        ConstellaTTS.SDK.UI.Actions.IPersistable
+    {
+        action.Execute();
+        try
+        {
+            await action.Persist(_projectManager);
+        }
+        catch (Exception ex)
+        {
+            // Property access on `action` would be ambiguous here
+            // because IAction and IReversible both declare Id/Name;
+            // up-casting to IAction picks the action-side metadata
+            // (which is what the log wants — the user-facing
+            // action name, not the history-entry name).
+            var asAction = (ConstellaTTS.SDK.UI.Actions.IAction)action;
+            _log.LogError(ex, "Persist failed for action [{Id}] {Name}", asAction.Id, asAction.Name);
+        }
+        _history.Push(action);
+    }
+
     private void Setup()
     {
         PointerPressed      += OnPressed;
@@ -157,6 +268,7 @@ public partial class TrackListView : UserControl
 
         _selection.PropertyChanged += OnSelectionChanged;
         _viewport.PropertyChanged  += OnViewportChanged;
+        _toolMode.PropertyChanged  += OnToolModeChanged;
 
         BlockEditorCloseButton.Click     += (_, _) => ApplySelection(null, null);
         BlockEditorLabelText.TextChanged += OnBlockEditorLabelChanged;
@@ -184,6 +296,19 @@ public partial class TrackListView : UserControl
 
         DataContextChanged += (_, _) => BindMinimap();
         BindMinimap();
+
+        // Sample drag-drop pipeline. The UserControl carries
+        // AllowDrop=True from XAML; these handlers turn raw
+        // DragOver / DragLeave / Drop events into the section-
+        // level drop-target highlighting and the AssignSampleAction
+        // dispatch on commit. Registered with handledEventsToo so
+        // events that bubble up already-handled (e.g. from a child
+        // control marking them so) still reach the canvas — the
+        // sample window is the only known emitter, and its drag
+        // source doesn't pre-mark.
+        AddHandler(DragDrop.DragOverEvent,  OnSampleDragOver,  handledEventsToo: true);
+        AddHandler(DragDrop.DragLeaveEvent, OnSampleDragLeave, handledEventsToo: true);
+        AddHandler(DragDrop.DropEvent,      OnSampleDrop,      handledEventsToo: true);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -202,11 +327,6 @@ public partial class TrackListView : UserControl
     {
         base.OnDetachedFromVisualTree(e);
 
-        // Flush any pending scroll session so its history entry isn't
-        // lost when the view detaches mid-burst (e.g. project reload,
-        // tab switch). The recorder is a singleton shared with the
-        // minimap; flushing here closes whichever input source's
-        // session was open at detach time.
         _viewportRecorder.Flush();
 
         if (_keyListenerTopLevel is not null)
@@ -219,35 +339,30 @@ public partial class TrackListView : UserControl
 
     private void OnKeyStateChanged(object? sender, KeyEventArgs e)
     {
-        if (e.Key is not (Key.LeftCtrl or Key.RightCtrl
-                       or Key.LeftShift or Key.RightShift))
+        // Ctrl/Shift drive the create-tool preview overlay; Alt drives
+        // the move/resize hover cursor (a press that lacks Alt opens
+        // the editor, a press WITH Alt starts a drag gesture, so the
+        // cursor needs to update the moment the user holds the key
+        // — not on the next pointer move).
+        if (e.Key is not (Key.LeftCtrl  or Key.RightCtrl
+                       or Key.LeftShift or Key.RightShift
+                       or Key.LeftAlt   or Key.RightAlt))
             return;
 
         if (_lastPointerInItems is null) return;
         UpdateToolPreview(_lastPointerInItems.Value, e.KeyModifiers);
+        UpdateHoverCursor (_lastPointerInItems.Value, e.KeyModifiers);
     }
 
     private void BindMinimap()
     {
         Minimap?.SetTracks(Vm?.Tracks);
-        // Pass the shared recorder to the minimap so its pan and
-        // select-range gestures contribute to the same coalesced undo
-        // session as the track-canvas wheel handler. Idempotent if the
-        // tracks collection rebinds without the recorder changing.
         Minimap?.SetViewportRecorder(_viewportRecorder);
     }
 
     // ── Block editor overlay ─────────────────────────────────────────────
 
     private bool _suppressLabelEcho;
-
-    /// <summary>
-    /// True while RefreshBlockEditor is pushing VM values into the
-    /// section-only controls. All section-control change handlers
-    /// short-circuit while this is set to break the VM→UI→VM echo that
-    /// would otherwise oscillate when a freshly-selected block's values
-    /// land in Slider/TextBox/ComboBox and immediately fire ValueChanged.
-    /// </summary>
     private bool _suppressSectionEcho;
 
     private void OnSelectionChanged(object? sender, PropertyChangedEventArgs e)
@@ -257,15 +372,35 @@ public partial class TrackListView : UserControl
 
     private void OnViewportChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Reposition / reopen the editor whenever the viewport moves.
-        // We can't bail when the editor is currently hidden — it might
-        // need to come back into view because the user (or a Ctrl+Z
-        // ViewportChangeAction) just scrolled the selected block back
-        // into the visible range. RefreshBlockEditor handles both cases:
-        // it shows + repositions the editor when the block is in view,
-        // and quietly hides it when it isn't.
         if (_selection.SelectedBlock is null) return;
         RefreshBlockEditor();
+    }
+
+    /// <summary>
+    /// Refresh the hover cursor whenever the active tool changes.
+    /// Without this hook, leaving Sample tool (e.g. closing the
+    /// sample window or switching to Select / Create) would leave
+    /// the canvas cursor stuck on <see cref="StandardCursorType.DragLink"/>
+    /// until the next pointer move — noticeable on touchpads where
+    /// the user might let the pointer rest after the tool toggle.
+    /// Modifier-key changes are already covered by
+    /// <see cref="OnKeyStateChanged"/>; this fills the gap for
+    /// non-key tool transitions.
+    /// </summary>
+    private void OnToolModeChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IToolModeService.Tool)) return;
+        if (_lastPointerInItems is null)
+        {
+            // Pointer isn't over the canvas; force a default arrow
+            // so a tool toggle made via toolbar (with the cursor
+            // parked over the toolbar button) doesn't carry a
+            // stale tool-specific cursor when the pointer next
+            // returns.
+            Cursor = new Cursor(StandardCursorType.Arrow);
+            return;
+        }
+        UpdateHoverCursor(_lastPointerInItems.Value, KeyModifiers.None);
     }
 
     private void RefreshBlockEditor()
@@ -273,8 +408,6 @@ public partial class TrackListView : UserControl
         var block = _selection.SelectedBlock;
         var track = _selection.SelectedTrack;
 
-        // Editor only opens for block selection; track-only selection is
-        // handled separately by the context bar's Delete-track button.
         if (block is null || track is null)
         {
             BlockEditor.IsVisible = false;
@@ -292,10 +425,6 @@ public partial class TrackListView : UserControl
         BlockEditorLabelText.Text = block.Label;
         _suppressLabelEcho        = false;
 
-        // Section-only chip strip elements (sample, seed) and the engine
-        // combo + slider footer all toggle together. Stage blocks just
-        // get duration/start/end + label + close button — no engine
-        // wiring, no sample binding.
         var isSection = block is ISectionViewModel;
         SamplePickerButton.IsVisible = isSection;
         SeedRow.IsVisible            = isSection;
@@ -308,11 +437,6 @@ public partial class TrackListView : UserControl
         PositionBlockEditor();
     }
 
-    /// <summary>
-    /// Push the section's current values into the editor controls. Wraps
-    /// the writes in <see cref="_suppressSectionEcho"/> so the change
-    /// handlers don't bounce them straight back into the VM.
-    /// </summary>
     private void PushSectionValuesToUi(ISectionViewModel section)
     {
         _suppressSectionEcho = true;
@@ -331,8 +455,8 @@ public partial class TrackListView : UserControl
             SeedValueText.Text = FormatSeed(section.Seed);
             SeedModeCombo.SelectedItem = section.SeedMode;
 
-            SamplePickerLabel.Text = section.VoiceSample is { } s
-                ? FormatSampleLabel(s)
+            SamplePickerLabel.Text = !string.IsNullOrEmpty(section.VoiceSampleRef)
+                ? FormatSampleLabel(section.VoiceSampleRef)
                 : "None";
         }
         finally
@@ -341,25 +465,17 @@ public partial class TrackListView : UserControl
         }
     }
 
-    /// <summary>
-    /// Render a seed value for the chip's text slot. The chip used to
-    /// show "auto" for 0, but the advance-mode dropdown now owns that
-    /// semantic (Random / Fixed / etc. determine what happens between
-    /// renders), so the chip is plain numeric. 0 stays as "0" — a
-    /// legitimate user-selectable value, not a special placeholder.
-    /// </summary>
     private static string FormatSeed(int seed) => seed.ToString();
 
-    /// <summary>
-    /// Render a Sample as a short pickable label — the trailing path
-    /// segment is enough to recognise it without overflowing the button.
-    /// </summary>
-    private static string FormatSampleLabel(Sample sample)
+    private static string FormatSampleLabel(string sampleRef)
     {
-        var path = sample.RawAudioPath;
-        if (string.IsNullOrEmpty(path)) return $"Sample {sample.Id.ToString()[..8]}";
-        var slash = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
-        return slash >= 0 ? path[(slash + 1)..] : path;
+        if (string.IsNullOrEmpty(sampleRef)) return "(unnamed)";
+
+        var slash = Math.Max(sampleRef.LastIndexOf('/'), sampleRef.LastIndexOf('\\'));
+        var name  = slash >= 0 ? sampleRef[(slash + 1)..] : sampleRef;
+
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name[..dot] : name;
     }
 
     private void PositionBlockEditor()
@@ -383,11 +499,6 @@ public partial class TrackListView : UserControl
         var viewEnd    = viewStart + visibleSec;
         if (block.EndSec < viewStart || block.StartSec > viewEnd)
         {
-            // Block has scrolled outside the visible viewport — just hide
-            // the overlay; don't clear the selection. The user might scroll
-            // back, in which case we want the editor to reopen seamlessly
-            // rather than the selection being silently dropped (which would
-            // also pollute the undo stack with a SelectAction every scroll).
             BlockEditor.IsVisible = false;
             return;
         }
@@ -414,14 +525,6 @@ public partial class TrackListView : UserControl
     }
 
     // ── Section-only handlers ───────────────────────────────────────────────
-    //
-    // Each handler:
-    //   1. Bails if echo is suppressed (RefreshBlockEditor is pushing).
-    //   2. Bails if the selection isn't a section — the controls are
-    //      hidden in that case but events can still fire transiently
-    //      while the selection switches.
-    //   3. Writes the new value to the VM and flips Dirty=true so the
-    //      block's left-edge yellow strip lights up.
 
     private void OnEngineComboChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -449,20 +552,12 @@ public partial class TrackListView : UserControl
         if (_suppressSectionEcho) return;
         if (_selection.SelectedBlock is not ISectionViewModel section) return;
 
-        // Round to one decimal so the value chip and the VM stay consistent
-        // (avoids 0.7000000000001 noise from the underlying double slider).
         var value = Math.Round(e.NewValue, 1);
         section.Temperature       = value;
         section.Dirty             = true;
         TemperatureValueText.Text = value.ToString("0.0");
     }
 
-    /// <summary>
-    /// Adjust seed by a step. Clamped at 0 (auto) on the low end so
-    /// pressing ◀ past zero just lands on "auto" rather than going
-    /// negative. No upper clamp — ints are large enough that the user
-    /// can't realistically reach the limit by clicking.
-    /// </summary>
     private void StepSeed(int delta)
     {
         if (_selection.SelectedBlock is not ISectionViewModel section) return;
@@ -477,9 +572,6 @@ public partial class TrackListView : UserControl
     {
         if (_selection.SelectedBlock is not ISectionViewModel section) return;
 
-        // Pick from the positive int range so the seed never lands on 0
-        // (which means "auto"). System.Random is fine here — we don't
-        // need cryptographic-quality randomness for an RNG seed.
         var seed = Random.Shared.Next(1, int.MaxValue);
         section.Seed       = seed;
         section.Dirty      = true;
@@ -496,13 +588,6 @@ public partial class TrackListView : UserControl
         section.Dirty    = true;
     }
 
-    /// <summary>
-    /// Apply the section's <see cref="SeedAdvanceMode"/> after a
-    /// successful generation. Called from <see cref="OnGenerateClick"/>
-    /// once the engine returns audio; isolated so future automation
-    /// (the listen-while-generating toggle) can call it too without
-    /// duplicating the policy logic.
-    /// </summary>
     private void AdvanceSeed(ISectionViewModel section)
     {
         var next = section.SeedMode switch
@@ -521,63 +606,25 @@ public partial class TrackListView : UserControl
 
     private void OnGenerateClick(object? sender, RoutedEventArgs e)
     {
-        // Hook for the TTS pipeline. Today this is a no-op: the IPC daemon
-        // wiring is in place but no real engine adapter exists yet, so
-        // there's nothing to actually generate against. Logging the click
-        // is enough until the first adapter lands — then this becomes a
-        // call into the IIPCService with the section's parameter bundle.
         if (_selection.SelectedBlock is not ISectionViewModel section) return;
         _log.LogInformation(
             "[GENERATE] engine={Engine} seed={Seed} mode={Mode} emotion={Emotion} temp={Temp:F1} sample={Sample}",
             section.EngineId, section.Seed, section.SeedMode, section.Emotion, section.Temperature,
-            section.VoiceSample?.RawAudioPath ?? "(none)");
+            section.VoiceSampleRef ?? "(none)");
 
-        // Apply the post-generation seed strategy. In Fixed mode this is
-        // a no-op; the other modes nudge the seed so the next render
-        // produces a fresh take without the user having to touch the
-        // chip manually.
         AdvanceSeed(section);
     }
 
     private void OnSamplePickerClick(object? sender, RoutedEventArgs e)
     {
-        // For now, cycle through the available samples on each click as a
-        // minimum-viable picker. Replacing this with a popup or modal
-        // window listing samples is a follow-up turn — the wiring (VM
-        // field, label refresh) is already in place.
-        if (_selection.SelectedBlock is not ISectionViewModel section) return;
-     
-   
-
-        var current = section.VoiceSample;
-
-
-        section.Dirty          = true;
     }
 
     private void CloseBlockEditor()
     {
-        // Direct selection clear without history — used by tear-down paths
-        // where pushing a SelectAction would be incorrect (e.g. detaching
-        // the view, project reload). User-initiated dismissal goes through
-        // ApplySelection(null, null) so it lands on the undo stack.
         _selection.SelectedBlock = null;
         _selection.SelectedTrack = null;
     }
 
-    /// <summary>
-    /// True if <paramref name="posInTrackListView"/> falls inside the
-    /// block editor overlay's bounds. The overlay lives in the inner
-    /// <c>Panel</c> (Grid.Row=1), so its <c>Bounds</c> are relative to
-    /// that panel — not the outer UserControl. Without translating, the
-    /// top-edge offset of every other ancestor row (32 px ruler today,
-    /// plus any future chrome) shifts the comparison and clicks on
-    /// neighbouring tracks register as "inside the editor" and get
-    /// swallowed. Translating the editor's top-left into TrackListView
-    /// coordinates with <see cref="Visual.TranslatePoint"/> normalises
-    /// the comparison so the hit zone matches what the user actually
-    /// sees on screen.
-    /// </summary>
     private bool IsInsideBlockEditor(Point posInTrackListView)
     {
         if (!BlockEditor.IsVisible) return false;
@@ -613,6 +660,25 @@ public partial class TrackListView : UserControl
         return (track, null);
     }
 
+    /// <summary>
+    /// Classify a press inside a hit block as resize-left, resize-right,
+    /// or move based on its distance from the block's edges. Edge
+    /// distances are computed in pixel space (using the current
+    /// viewport's PxPerSec) so the hot-zone is a constant
+    /// <see cref="EdgeResizePx"/> regardless of how zoomed in the user
+    /// is — a 3px resize zone always feels like a 3px resize zone.
+    /// </summary>
+    private DragKind ClassifyBlockPress(Point posInItems, IStageViewModel block)
+    {
+        var canvasX  = posInItems.X - HeaderWidth;
+        var leftPx   = _viewport.TimeToPx(block.StartSec);
+        var rightPx  = _viewport.TimeToPx(block.EndSec);
+
+        if (canvasX - leftPx <= EdgeResizePx)  return DragKind.ResizeLeft;
+        if (rightPx - canvasX <= EdgeResizePx) return DragKind.ResizeRight;
+        return DragKind.Move;
+    }
+
     private void OnCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
         if (_inReleaseHandler) return;
@@ -622,6 +688,7 @@ public partial class TrackListView : UserControl
 
         EndReorderVisuals();
         ClearCreateVisuals();
+        ClearMoveVisuals();
         Reset();
     }
 
@@ -629,6 +696,12 @@ public partial class TrackListView : UserControl
     {
         _lastPointerInItems = null;
         ClearToolPreview();
+
+        // Drop the hover-cursor back to the default arrow when the
+        // pointer leaves the view. Without this the cursor would
+        // stay frozen on whatever resize/move shape it last had,
+        // even after the pointer is over an unrelated control.
+        Cursor = new Cursor(StandardCursorType.Arrow);
     }
 
     // ── Wheel ────────────────────────────────────────────────────────────
@@ -644,13 +717,6 @@ public partial class TrackListView : UserControl
         var ctrl  = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
-        // Open / extend a viewport-history session. The recorder
-        // snapshots the FROM viewport state on the first Touch of a
-        // burst and pushes a single ViewportChangeAction once the
-        // user has paused for the settle threshold. Same recorder is
-        // shared with the minimap, so a wheel-burst here followed by
-        // a minimap drag both contribute to the user's scroll history
-        // through the same coalescing path.
         _viewportRecorder.Touch();
 
         if (ctrl)
@@ -723,58 +789,34 @@ public partial class TrackListView : UserControl
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
         var rawPos = e.GetPosition(this);
-        _log.LogDebug(
-            $"[PRESS-ENTRY] raw.X={rawPos.X:F2} raw.Y={rawPos.Y:F2} " +
-            $"_isAnimating={_isAnimating} _dragKind={_dragKind} " +
-            $"tool={_toolMode.Tool} createType={_toolMode.CreateType} mods={e.KeyModifiers}");
 
-        if (_isAnimating)
-        {
-            _log.LogDebug("[PRESS-EXIT] reason=animating");
-            return;
-        }
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            _log.LogDebug("[PRESS-EXIT] reason=not-left-button");
-            return;
-        }
+        if (_isAnimating) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if (IsInsideBlockEditor(rawPos)) return;
 
-        if (IsInsideBlockEditor(rawPos))
-        {
-            _log.LogDebug("[PRESS-EXIT] reason=inside-block-editor");
-            return;
-        }
+        // Sample tool active — canvas is suspended for normal pointer
+        // interaction. The only gesture that still works is sample
+        // drag-drop, which travels through the DragDrop subsystem
+        // (DragOver/Drop handlers) and is unaffected by this
+        // PointerPressed early-exit. Reorder, click-select, create,
+        // move/resize: all silenced until the user toggles the
+        // tool back off.
+        if (_toolMode.Tool == ToolMode.Sample) return;
 
         var items = this.FindControl<ItemsControl>("TracksControl");
-        if (items is null)
-        {
-            _log.LogDebug("[PRESS-EXIT] reason=items-null");
-            return;
-        }
+        if (items is null) return;
 
         var pos = e.GetPosition(items);
-        if (pos.Y < 0)
-        {
-            _log.LogDebug($"[PRESS-EXIT] reason=y-negative pos.Y={pos.Y:F2}");
-            return;
-        }
+        if (pos.Y < 0) return;
 
         var tracks = Vm?.Tracks;
-        if (tracks is null)
-        {
-            _log.LogDebug("[PRESS-EXIT] reason=tracks-null");
-            return;
-        }
+        if (tracks is null) return;
 
         var trackIdx = (int)(pos.Y / RowHeight);
         if (trackIdx < 0 || trackIdx >= tracks.Count)
         {
             if (_selection.SelectedBlock is not null || _selection.SelectedTrack is not null)
-            {
-                _log.LogDebug("[PRESS-EMPTY] clearing selection (below tracks)");
                 ApplySelection(null, null);
-            }
-            _log.LogDebug($"[PRESS-EXIT] reason=trackIdx-oob idx={trackIdx} count={tracks.Count}");
             return;
         }
 
@@ -789,32 +831,78 @@ public partial class TrackListView : UserControl
             _isDragging   = false;
             _clickOffsetY = pos.Y - trackIdx * RowHeight;
 
-            _log.LogDebug($"[PRESS-REORDER] track={track.Name} idx={trackIdx}");
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
+        // Canvas press. Sub-cases, in priority order:
+        //   1. Ctrl/Ctrl+Shift — explicit create override.
+        //   2. Alt + block hit — start move/resize based on edge
+        //      distance. The block is NOT selected on press: the
+        //      user is reaching for an edit gesture, not for the
+        //      editor overlay, so opening the overlay would just
+        //      flash it open at the start of every drag.
+        //   3. Block hit (no Alt) — click-to-select. Opens the
+        //      editor overlay; no drag gesture.
+        //   4. Empty canvas with Create tool active — falls into
+        //      the create gesture path below.
+        //   5. Empty canvas, nothing else — clear selection.
+
+        var resolved = ResolveCreateType(e.KeyModifiers);
+        var (_, hitBlock) = HitBlock(pos);
+        var altHeld = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+
+        if (resolved is null && hitBlock is not null && altHeld)
+        {
+            // Alt + block hit: edit gesture (move/resize). Don't
+            // touch selection — if the user releases without
+            // dragging past the threshold, OnReleased treats the
+            // gesture as a no-op and the previous selection (if
+            // any) survives unchanged.
+            var kind = ClassifyBlockPress(pos, hitBlock);
+            _dragKind                = kind;
+            _moveBlock               = hitBlock;
+            _moveSourceTrack         = track;
+            _moveSourceTrackIdx      = trackIdx;
+            _moveTargetTrack         = track;
+            _moveTargetTrackIdx      = trackIdx;
+            _moveOriginalStartSec    = hitBlock.StartSec;
+            _moveOriginalDurationSec = hitBlock.DurationSec;
+            _movePreviewStartSec     = hitBlock.StartSec;
+            _movePreviewDurationSec  = hitBlock.DurationSec;
+
+            var pressTimeSec = _viewport.PxToTime(pos.X - HeaderWidth);
+            _moveCursorOffsetSec = kind switch
+            {
+                DragKind.ResizeLeft  => pressTimeSec - hitBlock.StartSec,
+                DragKind.ResizeRight => pressTimeSec - hitBlock.EndSec,
+                _                    => pressTimeSec - hitBlock.StartSec,
+            };
+
+            _dragStart  = pos;
+            _isDragging = false;
 
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
         }
 
-        // Canvas press: create gesture or click-select.
-        var resolved = ResolveCreateType(e.KeyModifiers);
         if (resolved is null)
         {
-            var (_, hitBlock) = HitBlock(pos);
+            // No Ctrl override. A block hit (no Alt) is a click-to-
+            // select; an empty-canvas press clears selection.
             if (hitBlock is not null)
-            {
-                _log.LogDebug($"[PRESS-SELECT] hit '{hitBlock.Label}' on '{track.Name}'");
                 ApplySelection(track, hitBlock);
-            }
             else
-            {
-                _log.LogDebug("[PRESS-SELECT] miss — clearing selection");
                 ApplySelection(null, null);
-            }
             e.Handled = true;
             return;
         }
 
+        // Create gesture path. Ctrl held; if the press also hit a
+        // block, the Ctrl modifier wins — the user is explicitly
+        // asking to create, not to move/resize.
         var canvasX   = pos.X - HeaderWidth;
         var anchorSec = _viewport.PxToTime(canvasX);
 
@@ -838,10 +926,6 @@ public partial class TrackListView : UserControl
         _dragStart         = pos;
         _isDragging        = false;
 
-        _log.LogDebug(
-            $"[CREATE-PRESS] anchorSec={anchorSec:F3} clampMin={minSec:F3} " +
-            $"track={track.Name} type={resolved.Value}");
-
         e.Pointer.Capture(this);
         e.Handled = true;
     }
@@ -854,9 +938,13 @@ public partial class TrackListView : UserControl
         _lastPointerInItems = pos;
 
         if (_dragKind == DragKind.None)
+        {
             UpdateToolPreview(pos, e.KeyModifiers);
+            UpdateHoverCursor (pos, e.KeyModifiers);
+            return;
+        }
 
-        if (_dragKind == DragKind.None || _isAnimating) return;
+        if (_isAnimating) return;
 
         if (!_isDragging)
         {
@@ -865,27 +953,36 @@ public partial class TrackListView : UserControl
             if ((dx * dx) + (dy * dy) < DragThresholdPx * DragThresholdPx) return;
 
             _isDragging = true;
-            _log.LogDebug($"[MOVE-BEGIN] dragKind={_dragKind}");
 
-            if (_dragKind == DragKind.Reorder) BeginReorderVisuals();
-            else                               BeginCreateVisuals();
+            switch (_dragKind)
+            {
+                case DragKind.Reorder:                                BeginReorderVisuals(); break;
+                case DragKind.Create:                                 BeginCreateVisuals();  break;
+                case DragKind.Move
+                  or DragKind.ResizeLeft
+                  or DragKind.ResizeRight:                            BeginMoveVisuals();    break;
+            }
         }
 
-        if (_dragKind == DragKind.Reorder)
+        switch (_dragKind)
         {
-            UpdateReorderPreview(pos);
-            UpdateDropIndicator(pos);
-        }
-        else
-        {
-            UpdateCreatePreview(pos);
+            case DragKind.Reorder:
+                UpdateReorderPreview(pos);
+                UpdateDropIndicator(pos);
+                break;
+            case DragKind.Create:
+                UpdateCreatePreview(pos);
+                break;
+            case DragKind.Move:
+            case DragKind.ResizeLeft:
+            case DragKind.ResizeRight:
+                UpdateMovePreview(pos);
+                break;
         }
     }
 
     private async void OnReleased(object? sender, PointerReleasedEventArgs e)
     {
-        _log.LogDebug($"[RELEASE-ENTRY] _dragKind={_dragKind} _isDragging={_isDragging}");
-
         if (_dragKind == DragKind.None) { Reset(); return; }
 
         _inReleaseHandler = true;
@@ -895,29 +992,36 @@ public partial class TrackListView : UserControl
 
             if (!_isDragging)
             {
-                _log.LogDebug("[RELEASE-CLICK] no drag past threshold, cancelling");
-
                 // Click on track header (Reorder gesture, no motion) in Select
-                // mode → promote to a track selection. This mirrors the block
-                // click-to-select flow: same Delete button, different target.
+                // mode → promote to a track selection.
                 if (_dragKind == DragKind.Reorder
                     && _dragging is not null
                     && _toolMode.Tool == ToolMode.Select)
                 {
-                    _log.LogDebug($"[SELECT-TRACK] track={_dragging.Name}");
                     ApplySelection(_dragging, null);
                 }
 
                 EndReorderVisuals();
                 ClearCreateVisuals();
+                ClearMoveVisuals();
                 Reset();
                 return;
             }
 
-            if (_dragKind == DragKind.Reorder)
-                await HandleReorderReleaseAsync(e);
-            else
-                HandleCreateRelease(e);
+            switch (_dragKind)
+            {
+                case DragKind.Reorder:
+                    await HandleReorderReleaseAsync(e);
+                    break;
+                case DragKind.Create:
+                    await HandleCreateReleaseAsync(e);
+                    break;
+                case DragKind.Move:
+                case DragKind.ResizeLeft:
+                case DragKind.ResizeRight:
+                    await HandleMoveReleaseAsync(e);
+                    break;
+            }
 
             Reset();
         }
@@ -1018,7 +1122,7 @@ public partial class TrackListView : UserControl
 
     private void ClearCreateVisuals() => CreatePreview.IsVisible = false;
 
-    private void HandleCreateRelease(PointerReleasedEventArgs e)
+    private async Task HandleCreateReleaseAsync(PointerReleasedEventArgs e)
     {
         if (_createTrack is null) { ClearCreateVisuals(); return; }
 
@@ -1028,17 +1132,10 @@ public partial class TrackListView : UserControl
         var pos = e.GetPosition(items);
         var (startSec, endSec) = ResolveDragInterval(pos);
 
-        _log.LogDebug(
-            $"[CREATE-RELEASE] startSec={startSec:F3} endSec={endSec:F3} dur={endSec - startSec:F3}");
-
         ClearCreateVisuals();
 
         var durationSec = endSec - startSec;
-        if (durationSec < MinCreateDurSec)
-        {
-            _log.LogDebug($"[BLOCK-REJECTED] reason=too-short dur={durationSec:F3}");
-            return;
-        }
+        if (durationSec < MinCreateDurSec) return;
 
         IStageViewModel block = _createType == CreateType.Stage
             ? new StageViewModel
@@ -1059,15 +1156,411 @@ public partial class TrackListView : UserControl
                 Dirty       = true,
             };
 
-        _log.LogDebug($"[BLOCK-CREATED] type={_createType} track={_createTrack.Name}");
-
         var action = new CreateBlockAction(_createTrack, block);
-        action.Execute();
-        _history.Push(action);
+        await DispatchAsync(action);
 
         _selection.SelectedTrack = _createTrack;
         _selection.SelectedBlock = block;
         _toolMode.Tool           = ToolMode.Select;
+    }
+
+    // ── Move / resize gesture ────────────────────────────────────────────
+
+    private void BeginMoveVisuals()
+    {
+        if (_moveBlock is null || _moveSourceTrack is null) return;
+
+        // Reuse the create-preview rectangle as the move/resize ghost
+        // — same shape, same lifecycle, same hit-test-invisible
+        // overlay. The rectangle gets the source track's colours so
+        // the user sees what they're dragging; if a cross-track move
+        // sends it elsewhere, the preview re-tints in
+        // UpdateMovePreview as the cursor enters another row.
+        var bg     = new SolidColorBrush(Color.Parse(_moveSourceTrack.BlockBg));
+        var accent = new SolidColorBrush(Color.Parse(_moveSourceTrack.Color));
+
+        CreatePreview.Background      = bg;
+        CreatePreview.BorderBrush     = accent;
+        CreatePreview.BorderThickness = new Thickness(2);
+        CreatePreview.IsVisible       = true;
+    }
+
+    private void UpdateMovePreview(Point posInItems)
+    {
+        if (_moveBlock is null || _moveSourceTrack is null || Vm is null) return;
+
+        var pointerTimeSec = _viewport.PxToTime(posInItems.X - HeaderWidth);
+
+        // Resolve the new geometry from the gesture mode. Caller-side
+        // clamping (>= 0, >= MinCreateDurSec) happens here so the
+        // floating preview can show the actual final position rather
+        // than a value the action would later overrule.
+        switch (_dragKind)
+        {
+            case DragKind.Move:
+            {
+                var newStart = Math.Max(0, pointerTimeSec - _moveCursorOffsetSec);
+                _movePreviewStartSec    = newStart;
+                _movePreviewDurationSec = _moveOriginalDurationSec;
+                break;
+            }
+            case DragKind.ResizeLeft:
+            {
+                // The right edge stays anchored at the original
+                // EndSec; the left edge moves with the cursor minus
+                // the press offset within the edge band. Clamp so
+                // the resulting duration doesn't fall below the
+                // minimum and the start stays at >= 0.
+                var endSec     = _moveOriginalStartSec + _moveOriginalDurationSec;
+                var rawStart   = pointerTimeSec - _moveCursorOffsetSec;
+                var newStart   = Math.Min(Math.Max(0, rawStart), endSec - MinCreateDurSec);
+                _movePreviewStartSec    = newStart;
+                _movePreviewDurationSec = endSec - newStart;
+                break;
+            }
+            case DragKind.ResizeRight:
+            {
+                // StartSec is anchored; the right edge moves. New
+                // duration is endTime - startSec, clamped at min.
+                var rawEnd   = pointerTimeSec - _moveCursorOffsetSec;
+                var newEnd   = Math.Max(_moveOriginalStartSec + MinCreateDurSec, rawEnd);
+                _movePreviewStartSec    = _moveOriginalStartSec;
+                _movePreviewDurationSec = newEnd - _moveOriginalStartSec;
+                break;
+            }
+        }
+
+        // Cross-track only matters for Move — see MoveBlockAction's
+        // constructor contract. For resize gestures the target track
+        // stays pinned to the source.
+        if (_dragKind == DragKind.Move)
+        {
+            var idx = (int)(posInItems.Y / RowHeight);
+            if (idx >= 0 && idx < Vm.Tracks.Count)
+            {
+                var newTarget = Vm.Tracks[idx];
+                if (!ReferenceEquals(newTarget, _moveTargetTrack))
+                {
+                    _moveTargetTrack    = newTarget;
+                    _moveTargetTrackIdx = idx;
+
+                    // Re-tint the floating preview to match the new
+                    // destination, so a cross-track drag visually
+                    // signals the intent before commit.
+                    CreatePreview.Background  =
+                        new SolidColorBrush(Color.Parse(newTarget.BlockBg));
+                    CreatePreview.BorderBrush =
+                        new SolidColorBrush(Color.Parse(newTarget.Color));
+                }
+            }
+        }
+
+        // Lay out the preview rectangle. Y is the destination
+        // track's row; X / Width come from the time-domain values.
+        var startPx = _viewport.TimeToPx(_movePreviewStartSec);
+        var endPx   = _viewport.TimeToPx(_movePreviewStartSec + _movePreviewDurationSec);
+        var widthPx = Math.Max(0, endPx - startPx);
+
+        CreatePreview.Width  = widthPx;
+        CreatePreview.Margin = new Thickness(
+            HeaderWidth + startPx,
+            _moveTargetTrackIdx * RowHeight + 4,
+            0, 0);
+
+        CreatePreviewDurationText.Text      = FormatDuration(_movePreviewDurationSec);
+        CreatePreviewDurationText.IsVisible = widthPx >= 40;
+    }
+
+    private void ClearMoveVisuals() => CreatePreview.IsVisible = false;
+
+    private async Task HandleMoveReleaseAsync(PointerReleasedEventArgs e)
+    {
+        ClearMoveVisuals();
+
+        if (_moveBlock is null || _moveSourceTrack is null || _moveTargetTrack is null)
+            return;
+
+        // No-op if the gesture didn't actually change anything (the
+        // drag passed the threshold but landed back on the original
+        // position). Saves a manifest write and an undo entry.
+        var samePos =
+            Math.Abs(_movePreviewStartSec    - _moveOriginalStartSec)    < 1e-6 &&
+            Math.Abs(_movePreviewDurationSec - _moveOriginalDurationSec) < 1e-6;
+        var sameTrack = ReferenceEquals(_moveTargetTrack, _moveSourceTrack);
+
+        if (samePos && sameTrack) return;
+
+        var mode = _dragKind switch
+        {
+            DragKind.ResizeLeft  => MoveBlockMode.ResizeLeft,
+            DragKind.ResizeRight => MoveBlockMode.ResizeRight,
+            _                    => MoveBlockMode.Move,
+        };
+
+        // Resize is constrained to same-track by MoveBlockAction's
+        // constructor, so any vertical drag during a resize gesture
+        // is ignored: the target track is forced back to the source.
+        var target = mode == MoveBlockMode.Move ? _moveTargetTrack : _moveSourceTrack;
+
+        var action = new MoveBlockAction(
+            fromTrack:      _moveSourceTrack,
+            toTrack:        target,
+            block:          _moveBlock,
+            mode:           mode,
+            newStartSec:    _movePreviewStartSec,
+            newDurationSec: _movePreviewDurationSec);
+
+        await DispatchAsync(action);
+    }
+
+    /// <summary>
+    /// Update the cursor based on what's under the pointer when no
+    /// drag is in progress. Edge / body cursors only appear while
+    /// <see cref="KeyModifiers.Alt"/> is held AND the active tool is
+    /// <see cref="ToolMode.Select"/> — those are the conditions
+    /// under which a press would actually start a move/resize
+    /// gesture. In Create tool the press resolves to a create
+    /// (Alt is irrelevant), so showing a resize/move cursor would
+    /// be misleading.
+    /// </summary>
+    private void UpdateHoverCursor(Point posInItems, KeyModifiers modifiers)
+    {
+        if (_toolMode.Tool == ToolMode.Sample)
+        {
+            // Canvas is a drop zone while the Sample tool is active
+            // — a DragLink cursor signals that to the user even
+            // before they begin a drag from the library window.
+            // Plain clicks are silenced upstream (OnPressed early-
+            // exit), so the cursor shouldn't suggest "clickable".
+            Cursor = new Cursor(StandardCursorType.DragLink);
+            return;
+        }
+
+        var canEdit = modifiers.HasFlag(KeyModifiers.Alt)
+                   && _toolMode.Tool == ToolMode.Select;
+
+        if (!canEdit)
+        {
+            Cursor = new Cursor(StandardCursorType.Arrow);
+            return;
+        }
+
+        var (_, hit) = HitBlock(posInItems);
+        if (hit is null)
+        {
+            Cursor = new Cursor(StandardCursorType.Arrow);
+            return;
+        }
+
+        Cursor = ClassifyBlockPress(posInItems, hit) switch
+        {
+            DragKind.ResizeLeft  => new Cursor(StandardCursorType.LeftSide),
+            DragKind.ResizeRight => new Cursor(StandardCursorType.RightSide),
+            _                    => new Cursor(StandardCursorType.SizeAll),
+        };
+    }
+
+    // ── Sample drag-drop ───────────────────────────────────────────────
+    //
+    // The Sample Library window is the only registered drag source
+    // for the timeline; its payload format is
+    // <see cref="SampleLibraryView.SampleDragFormat"/>. The handlers
+    // below ignore drags carrying any other format so external
+    // payloads (browser-dropped URLs, file-explorer drags) silently
+    // pass through without disturbing the canvas.
+    //
+    // The drop-target highlight is driven through the section's
+    // <c>IsDropTarget</c> observable: DragOver flips it true on the
+    // section under the pointer (and false on whatever was previously
+    // highlighted), DragLeave / Drop / failure paths clear it.
+    // Tracking the active target in <see cref="_activeDropTarget"/>
+    // means we don't have to walk every block to wipe stale
+    // highlights — just the one that was last lit.
+
+    /// <summary>
+    /// Hit-test the canvas for a section under the pointer. Returns
+    /// (track, section) when the pointer lands on a section; (track,
+    /// null) when on a stage or empty canvas (track row identified
+    /// but nothing droppable there); (null, null) when fully out of
+    /// the canvas region. Mirrors <see cref="HitBlock"/> but narrows
+    /// the result type to section, since stages aren't valid drop
+    /// targets.
+    /// </summary>
+    private (ITrackViewModel? track, ISectionViewModel? section) HitSection(Point posInItems)
+    {
+        var (track, block) = HitBlock(posInItems);
+        return (track, block as ISectionViewModel);
+    }
+
+    private void OnSampleDragOver(object? sender, DragEventArgs e)
+    {
+        // Avalonia 12 routes drag payloads through DataTransfer (the
+        // old Data/IDataObject is gone). TryGetValue with our typed
+        // application format returns null for any drag that doesn't
+        // carry our payload — browser URL drags, OS file drags,
+        // unrelated app drags all fall through cleanly.
+        var sampleRef = e.DataTransfer?.TryGetValue(SampleLibraryView.SampleDragFormat);
+        if (sampleRef is null)
+        {
+            e.DragEffects = DragDropEffects.None;
+            HideSampleDragPreview();
+            return;
+        }
+
+        var items = this.FindControl<ItemsControl>("TracksControl");
+        if (items is null)
+        {
+            e.DragEffects = DragDropEffects.None;
+            HideSampleDragPreview();
+            return;
+        }
+
+        var pos = e.GetPosition(items);
+
+        // Update the floating preview card's position regardless of
+        // whether there's a valid drop target under the cursor — the
+        // user benefits from seeing the dragged sample's name even
+        // while parked over an empty area or a stage block.
+        ShowSampleDragPreview(pos, sampleRef);
+
+        var (_, section) = HitSection(pos);
+
+        if (section is null)
+        {
+            // Pointer isn't over a valid drop target. Clear any
+            // stale highlight from a previous tick of this same
+            // drag and tell the source the drop wouldn't take.
+            ClearActiveDropTarget();
+            e.DragEffects = DragDropEffects.None;
+            e.Handled     = true;
+            return;
+        }
+
+        // New section under pointer — transfer the highlight. The
+        // identity check skips the redundant flag flip when the
+        // pointer stays inside the same section across many ticks.
+        if (!ReferenceEquals(section, _activeDropTarget))
+        {
+            ClearActiveDropTarget();
+            section.IsDropTarget = true;
+            _activeDropTarget    = section;
+        }
+
+        // Link is the closest semantic to "section now references
+        // this sample" — the file isn't copied or moved, just
+        // pointed at by name. Matching the source's requested
+        // effect keeps the cursor consistent.
+        e.DragEffects = DragDropEffects.Link;
+        e.Handled     = true;
+    }
+
+    private void OnSampleDragLeave(object? sender, RoutedEventArgs e)
+    {
+        // The pointer left the canvas (or the drag was cancelled
+        // mid-flight). Drop the section highlight AND the floating
+        // preview card; if it really was a leave and the user re-
+        // enters, DragOver will set both again on the new section.
+        ClearActiveDropTarget();
+        HideSampleDragPreview();
+    }
+
+    private async void OnSampleDrop(object? sender, DragEventArgs e)
+    {
+        // Pull the typed sample reference up front. Same payload
+        // contract as DragOver: TryGetValue returns null on any
+        // non-sample drag, in which case the drop is silently
+        // ignored.
+        var newRef = e.DataTransfer?.TryGetValue(SampleLibraryView.SampleDragFormat);
+        if (string.IsNullOrEmpty(newRef))
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+
+        var items = this.FindControl<ItemsControl>("TracksControl");
+        if (items is null) return;
+
+        var pos = e.GetPosition(items);
+        var (track, section) = HitSection(pos);
+
+        // Always clear the highlight on drop, regardless of whether
+        // the drop landed on a valid target. A successful drop will
+        // re-set it briefly via DragOver on a subsequent drag, but
+        // for THIS gesture the highlight has served its purpose.
+        ClearActiveDropTarget();
+        HideSampleDragPreview();
+
+        if (track is null || section is null)
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+
+        // No-op if the section already has this exact ref. Skips a
+        // redundant manifest write and a confusing undo entry that
+        // appears to do nothing.
+        if (string.Equals(section.VoiceSampleRef, newRef, StringComparison.Ordinal))
+        {
+            e.DragEffects = DragDropEffects.Link;
+            e.Handled     = true;
+            return;
+        }
+
+        var action = new AssignSampleAction(
+            track:  track,
+            block:  section,
+            oldRef: section.VoiceSampleRef,
+            newRef: newRef);
+
+        await DispatchAsync(action);
+
+        // Refresh the editor overlay if it happens to be open on this
+        // section — the sample chip's label needs to update to the
+        // newly-assigned filename. RefreshBlockEditor is a cheap
+        // VM-read; calling it unconditionally is simpler than
+        // checking whether the dropped section equals the selected
+        // one and matches the way other section mutators (move,
+        // resize) refresh themselves.
+        RefreshBlockEditor();
+
+        e.DragEffects = DragDropEffects.Link;
+        e.Handled     = true;
+    }
+
+    private void ClearActiveDropTarget()
+    {
+        if (_activeDropTarget is null) return;
+        _activeDropTarget.IsDropTarget = false;
+        _activeDropTarget              = null;
+    }
+
+    /// <summary>
+    /// Position and show the floating sample-drag preview card. The
+    /// card uses the same RenderTransform trick as the track-reorder
+    /// preview — layout sits at (0, 0) but a TranslateTransform
+    /// follows the cursor every DragOver tick. Offset 14 px right and
+    /// 10 px down keeps the card out from under the cursor itself so
+    /// the user can still see what's directly beneath.
+    /// </summary>
+    private void ShowSampleDragPreview(Point posInItems, string sampleRef)
+    {
+        SampleDragPreviewLabel.Text = FormatSampleLabel(sampleRef);
+
+        if (SampleDragPreview.RenderTransform is not TranslateTransform tr)
+        {
+            tr = new TranslateTransform();
+            SampleDragPreview.RenderTransform = tr;
+        }
+        tr.X = posInItems.X + 14;
+        tr.Y = posInItems.Y + 10;
+
+        SampleDragPreview.IsVisible = true;
+    }
+
+    private void HideSampleDragPreview()
+    {
+        if (!SampleDragPreview.IsVisible) return;
+        SampleDragPreview.IsVisible = false;
     }
 
     // ── Reorder gesture ──────────────────────────────────────────────────
@@ -1126,7 +1619,12 @@ public partial class TrackListView : UserControl
         var allContainers = ContainersInRange(items, 0, Vm.Tracks.Count - 1);
         MoveTransition.ResetOffsets(allContainers);
 
-        Vm.Reorder(fromIdx, toIdx);
+        // Reorder via action so undo and persist both fire. The
+        // action's Execute calls Vm.Reorder internally — same code
+        // path the previous direct call used, just routed through
+        // the action shell.
+        var action = new ReorderTracksAction(Vm, fromIdx, toIdx);
+        await DispatchAsync(action);
 
         _dragging!.IsDragging = false;
         await Task.Delay(FadeInDuration);
@@ -1194,12 +1692,6 @@ public partial class TrackListView : UserControl
 
     // ── Track-header actions: add / rename ───────────────────────────────
 
-    /// <summary>
-    /// Open the Add Track dialog and, on confirm, append a new track with
-    /// the user's chosen name. Default pre-fills to "Track N" so a quick
-    /// Enter accepts a reasonable placeholder — but the user can type
-    /// anything before confirming.
-    /// </summary>
     private async void OnAddTrackClick(object? sender, RoutedEventArgs e)
     {
         var owner = TopLevel.GetTopLevel(this) as Window;
@@ -1209,20 +1701,10 @@ public partial class TrackListView : UserControl
         var name = await AddTrackDialog.ShowAsync(owner, defaultName);
         if (name is null) return;
 
-        Vm.AddTrack(name);
+        var action = new AddTrackAction(Vm, name);
+        await DispatchAsync(action);
     }
 
-    /// <summary>
-    /// Right-click on a track header → flip the row into rename mode
-    /// (alternative entry point alongside double-click).
-    /// Left-click falls through to OnPressed and starts a reorder gesture
-    /// (which is further promoted to a track-select in OnReleased if the
-    /// user didn't actually drag, and the current tool is Select).
-    ///
-    /// Focus and select-all are deferred via <see cref="Dispatcher"/>
-    /// because the TextBox IsVisible flips in the same tick — the
-    /// TextBox has to finish layout before it can receive focus.
-    /// </summary>
     private void OnTrackHeaderPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Control ctrl) return;
@@ -1235,20 +1717,6 @@ public partial class TrackListView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>
-    /// Double-click on a track header → inline rename. Mirrors the
-    /// way file-explorer-style UIs let the user rename a row by
-    /// double-clicking its label, and matches Kerim's earlier
-    /// expectation that the existing right-click affordance was a
-    /// fallback rather than the primary path. Left single click is
-    /// still reorder-or-select; double-click escalates to rename.
-    ///
-    /// Avalonia's <c>DoubleTapped</c> fires after the second pointer
-    /// release, so the first PointerPressed has already started a
-    /// reorder gesture. We don't try to undo that — the user hasn't
-    /// moved past the drag threshold so the gesture is harmless and
-    /// the next OnReleased will end it cleanly.
-    /// </summary>
     private void OnTrackHeaderDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (sender is not Control ctrl) return;
@@ -1282,8 +1750,9 @@ public partial class TrackListView : UserControl
         if (tb.DataContext is not ITrackViewModel track) return;
 
         // LostFocus = commit. Two-way binding already pushed the final
-        // value into Name; just exit edit mode.
-        CommitRename(track);
+        // value into Name; the action is dispatched against the
+        // before/after pair captured at rename start.
+        _ = CommitRenameAsync(track);
     }
 
     private void OnTrackRenameKeyDown(object? sender, KeyEventArgs e)
@@ -1293,29 +1762,47 @@ public partial class TrackListView : UserControl
 
         if (e.Key == Key.Enter)
         {
-            CommitRename(track);
+            _ = CommitRenameAsync(track);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
         {
             // Revert: two-way binding has been pushing characters into
-            // Name as the user typed, so restore the pre-edit snapshot.
+            // Name as the user typed, so restore the pre-edit snapshot
+            // BEFORE committing — this way no rename action is
+            // dispatched and the manifest stays untouched.
             if (_renameSnapshot is var (snapTrack, snapName) && snapTrack == track)
                 track.Name = snapName;
-            CommitRename(track);
+            _ = CommitRenameAsync(track, dispatchAction: false);
             e.Handled = true;
         }
     }
 
-    private void CommitRename(ITrackViewModel track)
+    private async Task CommitRenameAsync(ITrackViewModel track, bool dispatchAction = true)
     {
-        // Empty rename collapses back to a placeholder rather than leaving
-        // an invisible-label track lying around.
+        // Empty rename collapses back to a placeholder rather than
+        // leaving an invisible-label track lying around.
         if (string.IsNullOrWhiteSpace(track.Name))
             track.Name = "Track";
 
+        var snapshot = _renameSnapshot;
         track.IsEditing = false;
         _renameSnapshot = null;
+
+        if (!dispatchAction) return;
+        if (snapshot is null) return;
+
+        var (snapTrack, oldName) = snapshot.Value;
+        if (!ReferenceEquals(snapTrack, track)) return;
+
+        var newName = track.Name;
+        if (string.Equals(oldName, newName, StringComparison.Ordinal)) return;
+
+        // Two-way binding has already set track.Name = newName. The
+        // rename action's Execute is idempotent against that, and
+        // the persist + history push happen here.
+        var action = new RenameTrackAction(track, oldName, newName);
+        await DispatchAsync(action);
     }
 
     // ── Shared helpers ───────────────────────────────────────────────────
@@ -1331,12 +1818,22 @@ public partial class TrackListView : UserControl
 
     private void Reset()
     {
-        _dragKind       = DragKind.None;
-        _dragging       = null;
-        _createTrack    = null;
-        _createTrackIdx = 0;
-        _isDragging     = false;
-        _isAnimating    = false;
+        _dragKind                = DragKind.None;
+        _dragging                = null;
+        _createTrack             = null;
+        _createTrackIdx          = 0;
+        _moveBlock               = null;
+        _moveSourceTrack         = null;
+        _moveTargetTrack         = null;
+        _moveSourceTrackIdx      = 0;
+        _moveTargetTrackIdx      = 0;
+        _moveOriginalStartSec    = 0;
+        _moveOriginalDurationSec = 0;
+        _moveCursorOffsetSec     = 0;
+        _movePreviewStartSec     = 0;
+        _movePreviewDurationSec  = 0;
+        _isDragging              = false;
+        _isAnimating             = false;
     }
 
     private (ITrackViewModel? target, bool isBottom) Hit(Point posInItems)

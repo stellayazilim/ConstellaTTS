@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using ConstellaTTS.Core.Layouts;
 using ConstellaTTS.Core.ViewModels;
 using ConstellaTTS.Core.Views;
+using ConstellaTTS.SDK.UI.Navigation;
 
 namespace ConstellaTTS.Core.Windows;
 
@@ -21,18 +22,18 @@ public partial class SampleLibraryWindow : Window
     private Control? _timelineRegion;
     private int      _dragSuspendCount;
 
-    private readonly Lazy<MainWindow> _mainWindow;
+    private readonly INavigationManager _navigation;
 
     public event EventHandler<bool>? VisibilityChanged;
 
     public SampleLibraryWindow(
-        Lazy<MainWindow>       mainWindow,
+        INavigationManager     navigation,
         SampleLibraryView      view,
         SampleLibraryViewModel vm)
     {
         InitializeComponent();
         DataContext = vm;
-        _mainWindow = mainWindow;
+        _navigation = navigation;
 
         if (this.FindControl<ContentControl>("ContentSlot") is { } slot)
         {
@@ -68,11 +69,19 @@ public partial class SampleLibraryWindow : Window
     public void BeginDragSuspend() => _dragSuspendCount++;
     public void EndDragSuspend()   => _dragSuspendCount = Math.Max(0, _dragSuspendCount - 1);
 
+    /// <summary>
+    /// Pull the owner out of <see cref="INavigationManager.ActiveWindow"/>
+    /// the first time the flyout opens. Avoids hard-wiring a specific
+    /// window type into this class — the flyout doesn't actually care
+    /// who its owner is, only that it has one to anchor against — and
+    /// breaks the dependency cycle the previous <c>Lazy&lt;MainWindow&gt;</c>
+    /// existed to work around.
+    /// </summary>
     private void EnsureOwner()
     {
         if (_owner is not null) return;
-        _owner          = _mainWindow.Value;
-        _timelineRegion = FindTimelineRegion(_owner);
+        _owner          = _navigation.ActiveWindow;
+        _timelineRegion = _owner is not null ? FindTimelineRegion(_owner) : null;
     }
 
     private static Control? FindTimelineRegion(Window owner) =>

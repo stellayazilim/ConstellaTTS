@@ -44,4 +44,23 @@ public interface IStageViewModel : INotifyPropertyChanged
     /// callers that need a mutable end should adjust DurationSec.
     /// </summary>
     double EndSec      { get; }
+
+    /// <summary>
+    /// Runtime hover flag set by the timeline view while a sample is
+    /// being dragged over this block from the Sample Library. The
+    /// section DataTemplate watches this and lights up a glow / accent
+    /// border so the user can see exactly which target their drop
+    /// will land on. Stages also expose the property for type-system
+    /// uniformity, but their template ignores it — stages aren't
+    /// valid drop targets and the drag handlers won't ever set it
+    /// true on a stage.
+    ///
+    /// <para>
+    /// <b>Not persisted.</b> This is purely transient view state, set
+    /// during DragOver and cleared on DragLeave / Drop. The on-disk
+    /// <c>BlockData</c> shape doesn't carry it, hydration always
+    /// starts at false.
+    /// </para>
+    /// </summary>
+    bool IsDropTarget { get; set; }
 }

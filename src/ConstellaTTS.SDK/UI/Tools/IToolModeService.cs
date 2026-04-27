@@ -13,6 +13,29 @@ public enum ToolMode
     /// determined by <see cref="IToolModeService.CreateType"/>.
     /// </summary>
     Create,
+
+    /// <summary>
+    /// Sample-assignment mode. The sample library window is open
+    /// (toggled in lockstep with this tool); the timeline canvas
+    /// is suspended for normal interaction — click-to-select,
+    /// move/resize, and create are all disabled. The only active
+    /// gesture is dragging a sample from the library onto a
+    /// section, which fires an <c>AssignSampleAction</c> and
+    /// leaves the tool active so the user can chain assignments.
+    ///
+    /// <para>
+    /// <b>Why a tool, not just a window state.</b> Modeling this
+    /// as a third tool (alongside Select and Create) gives the
+    /// canvas a single switch to gate every pointer behaviour
+    /// against, and makes the "sample library is open" condition
+    /// observable through the same 
+    /// <see cref="IToolModeService.PropertyChanged"/> stream the
+    /// rest of the UI already listens to. The sample library
+    /// window's visibility piggybacks on the tool transition
+    /// instead of carrying its own independent state machine.
+    /// </para>
+    /// </summary>
+    Sample,
 }
 
 /// <summary>

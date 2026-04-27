@@ -98,6 +98,6 @@ public sealed class SelectAction : ActionBase, IReversible
     /// instance, when reversed again, produces a forward SelectAction
     /// with the original direction.
     /// </remarks>
-    public IAction Reverse(IReversible? previous, params object[] args) =>
+    public IAction Reverse(IReversible? previous, object? data = null) =>
         new SelectAction(_selection, _toTrack, _toBlock, _fromTrack, _fromBlock);
 }

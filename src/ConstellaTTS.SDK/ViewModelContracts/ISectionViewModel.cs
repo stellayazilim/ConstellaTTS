@@ -1,6 +1,3 @@
-using ConstellaTTS.Domain;
-using ConstellaTTS.Domain.Primitives;
-
 namespace ConstellaTTS.SDK.ViewModelContracts;
 
 /// <summary>
@@ -37,23 +34,43 @@ public enum SeedAdvanceMode
 /// Inherits geometry/label/colour from <see cref="IStageViewModel"/>
 /// and adds the fields that drive the TTS pipeline.
 ///
+/// <para>
 /// Field set:
-///   · <see cref="Emotion"/>      — 0–100 cool→hot intensity slider.
-///   · <see cref="Temperature"/>  — 0.0–2.0 sampling temperature.
-///   · <see cref="Seed"/>         — RNG seed; 0 means "auto" (engine picks).
-///   · <see cref="EngineId"/>     — selected engine identifier (e.g.
-///                                  "Chatterbox", "F5-TTS"). Maps to a
-///                                  registered <c>IEngineCatalog</c> entry.
-///   · <see cref="VoiceSample"/>  — reference audio sample driving the
-///                                  voice clone. Domain entity, not a VM.
-///   · <see cref="Dirty"/>        — flag for "needs regeneration". Any
-///                                  change to the above flips it true.
-///   · <see cref="Model"/>        — engine-specific extra params bundle.
-///                                  Optional, populated by the engine's
-///                                  plugin if it has bespoke knobs.
+///   · <see cref="Emotion"/>        — 0–100 cool→hot intensity slider.
+///   · <see cref="Temperature"/>    — 0.0–2.0 sampling temperature.
+///   · <see cref="Seed"/>           — RNG seed; 0 means "auto" (engine picks).
+///   · <see cref="SeedMode"/>       — what happens to Seed after each render.
+///   · <see cref="EngineId"/>       — selected engine identifier (e.g.
+///                                    "Chatterbox", "F5-TTS"). Maps to a
+///                                    registered <c>IEngineCatalog</c> entry.
+///   · <see cref="VoiceSampleRef"/> — reference to the voice sample that
+///                                    drives the clone. Stored as a
+///                                    string identifier (filename today,
+///                                    a stable id later) so the section
+///                                    contract doesn't pull in the audio
+///                                    layer; the editor / engine resolves
+///                                    it through the sample service.
+///   · <see cref="Dirty"/>          — flag for "needs regeneration". Any
+///                                    change to the above flips it true.
+/// </para>
 ///
-/// Sections start unbound (EngineId empty, Model null, VoiceSample null).
-/// The section editor's controls drive the user through binding them.
+/// <para>
+/// Sections start unbound (EngineId empty, VoiceSampleRef null). The
+/// section editor's controls drive the user through binding them.
+/// </para>
+///
+/// <para>
+/// <b>Why a string ref instead of the Sample record itself.</b>
+/// <c>Sample</c> lives in the audio SDK; reaching it from this contract
+/// would invert the dependency graph (the audio layer depends on the
+/// SDK, not the other way round). A string reference keeps the
+/// section contract layer-agnostic — the audio service, the engine
+/// adapter, and the UI all dereference it through their own
+/// catalogue lookup. Engine plugin parameters (the old
+/// <c>Model</c> bag) will land here as a separate, plugin-defined
+/// shape once the plugin system arrives; for now the section is a
+/// fixed parameter set.
+/// </para>
 /// </summary>
 public interface ISectionViewModel : IStageViewModel
 {
@@ -83,22 +100,19 @@ public interface ISectionViewModel : IStageViewModel
 
     /// <summary>
     /// Engine identifier (e.g. "Chatterbox"). Empty until the user picks.
-    /// Maps to a <see cref="IEngineCatalog"/> entry.
+    /// Maps to an <c>IEngineCatalog</c> entry.
     /// </summary>
     string EngineId { get; set; }
 
     /// <summary>
-    /// Reference audio sample the engine should clone the voice from.
-    /// Null until the user selects one from the sample library.
+    /// Identifier of the voice sample the engine should clone the voice
+    /// from. Filename (e.g. <c>"voice_lyra.wav"</c>) for the moment;
+    /// resolved against the active project's catalogue at render time.
+    /// Null until the user assigns one — typically by drag-dropping a
+    /// sample from the Sample Library onto this section.
     /// </summary>
-    Sample? VoiceSample { get; set; }
+    string? VoiceSampleRef { get; set; }
 
     /// <summary>Has unsaved/ungenerated changes — shows yellow left strip.</summary>
     bool Dirty { get; set; }
-
-    /// <summary>
-    /// Engine-specific parameter bundle. Null until the user binds an
-    /// engine via the section editor's model dropdown.
-    /// </summary>
-    Model? Model { get; set; }
 }

@@ -57,23 +57,23 @@
                                 <MenuItem Header="View" />
                                 <MenuItem Header="Help" />
                             </Menu>
-                            <!-- "static" badge in the centre of the title bar.
-                                 The transport, timecode, engine summary and
-                                 sound-bank flyout in the row below are all
-                                 window-level controls (project-wide playback,
-                                 global engine, etc.) — the badge labels that
-                                 row's contents as fixed app chrome rather than
-                                 per-section context. Hit-test invisible so the
-                                 drag area underneath still receives window-move
-                                 events. -->
-                            <TextBlock Text="static"
+                            <!-- Project-name badge in the centre of
+                                 the title bar. Bound to the active
+                                 project's Name via the VM's
+                                 ConstellaProject seed property; reads
+                                 as empty when no project is loaded
+                                 (e.g. DAW opened directly without the
+                                 launcher in the loop). Hit-test
+                                 invisible so the drag area underneath
+                                 still receives window-move events. -->
+                            <TextBlock Text="{Binding ConstellaProject.Name}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
-                                       FontSize="9"
+                                       FontSize="11"
                                        FontWeight="Medium"
-                                       LetterSpacing="2"
-                                       Opacity="0.45"
-                                       Foreground="{StaticResource FgMuted}"
+                                       LetterSpacing="1"
+                                       Opacity="0.7"
+                                       Foreground="{StaticResource FgSecondary}"
                                        IsHitTestVisible="False" />
                         </Panel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Stretch">

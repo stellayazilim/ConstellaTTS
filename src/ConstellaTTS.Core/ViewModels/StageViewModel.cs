@@ -36,5 +36,13 @@ public partial class StageViewModel : ViewModel, IStageViewModel
     private double _durationSec;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Runtime-only — set by drag-drop handlers, never persisted.
+    /// See <see cref="IStageViewModel.IsDropTarget"/> for the full
+    /// contract.
+    /// </remarks>
+    [ObservableProperty] private bool _isDropTarget;
+
+    /// <inheritdoc />
     public double EndSec => StartSec + DurationSec;
 }

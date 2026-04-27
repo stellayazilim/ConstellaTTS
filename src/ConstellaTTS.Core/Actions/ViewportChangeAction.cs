@@ -136,7 +136,7 @@ public sealed class ViewportChangeAction : ActionBase, IReversible, IEffect
     /// fire-and-forget: the carrier did them on the way out, undo
     /// doesn't try to invent inverses.
     /// </remarks>
-    public IAction Reverse(IReversible? previous, params object[] args) =>
+    public IAction Reverse(IReversible? previous, object? data = null) =>
         new ViewportChangeAction(_viewport,
             _toPxPerSec, _toScrollOffsetSec,
             _fromPxPerSec, _fromScrollOffsetSec);

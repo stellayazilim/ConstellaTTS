@@ -8,15 +8,21 @@ public sealed class NavigationBuilder
 {
     private readonly List<NavigationRequest> _requests = [];
 
-    public NavigationBuilder OpenWindow<TWindow>()
+    public NavigationBuilder OpenWindow<TWindow>(object? data = null)
     {
-        _requests.Add(new OpenWindowRequest(typeof(TWindow)));
+        _requests.Add(new OpenWindowRequest(typeof(TWindow), data));
         return this;
     }
 
     public NavigationBuilder CloseWindow<TWindow>()
     {
         _requests.Add(new CloseWindowRequest(typeof(TWindow)));
+        return this;
+    }
+
+    public NavigationBuilder HideWindow<TWindow>()
+    {
+        _requests.Add(new HideWindowRequest(typeof(TWindow)));
         return this;
     }
 

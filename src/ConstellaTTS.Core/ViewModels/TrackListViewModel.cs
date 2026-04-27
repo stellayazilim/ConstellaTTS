@@ -1,27 +1,50 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
-using ConstellaTTS.Domain;
+using ConstellaTTS.SDK.App;
+using ConstellaTTS.SDK.Projects;
 using ConstellaTTS.SDK.ViewModelContracts;
 
 namespace ConstellaTTS.Core.ViewModels;
 
 /// <summary>
-/// ViewModel for the track list view. Owns the observable track collection
-/// and the reorder operation directly — there is no separate "project
-/// manager" layer because there is no project concept to manage yet.
+/// ViewModel for the track list view. Owns the observable track
+/// collection and the reorder operation directly. Subscribes to
+/// <see cref="IProjectManager.ActiveChanged"/> so opening a project
+/// rebuilds the collection from <see cref="IConstellaProject.Tracks"/>;
+/// closing one (the manager raising the event with a null project)
+/// clears it.
 ///
-/// Placeholder tracks are seeded inline; when real save/load arrives the
-/// seeder will be replaced with a load-from-disk path, but ownership of
-/// the collection stays here.
+/// <para>
+/// <b>Empty-state on null.</b> A null active project leaves
+/// <see cref="Tracks"/> empty rather than throwing. The DAW can be
+/// opened directly without a project for debugging
+/// (<see cref="DawDirectBootstrap"/>), and the launcher closes the
+/// previous project before opening the next — the in-between window
+/// where Active is null is brief, but the rebuild path has to handle
+/// it cleanly.
+/// </para>
+///
+/// <para>
+/// <b>Palette is the single source of truth for runtime colours.</b>
+/// Persistence intentionally drops <c>Color</c> and <c>BlockBg</c>
+/// from <see cref="TrackData"/>; the rebuilder picks them from the
+/// position-modulo-palette scheme below. Both the Add Track flow and
+/// the on-open hydration use the same helper, so a track at index N
+/// always lands on <c>Palette[N % Palette.Length]</c> regardless of
+/// how it got there.
+/// </para>
 /// </summary>
 public sealed partial class TrackListViewModel : ViewModel
 {
     /// <summary>
-    /// Accent colour palette cycled through for new tracks. Picks the entry
-    /// at (Tracks.Count % palette.Length) so adding many tracks yields a
-    /// stable, repeating rainbow rather than a random wash.
+    /// Accent colour palette cycled through for new and hydrated
+    /// tracks. Picks the entry at <c>position % Palette.Length</c> so
+    /// adding many tracks (or re-opening a project with many) yields
+    /// a stable, repeating rainbow rather than a random wash. Stored
+    /// here rather than at the call site so Add Track and project
+    /// hydration share one source of truth.
     /// </summary>
-    private static readonly (string color, string bg)[] NewTrackPalette =
+    private static readonly (string color, string bg)[] Palette =
     [
         ("#7C6AF7", "#2A2560"),
         ("#60AAFF", "#1A3A5C"),
@@ -32,21 +55,75 @@ public sealed partial class TrackListViewModel : ViewModel
         ("#FBBF24", "#3A2A10"),
     ];
 
+    /// <summary>
+    /// Resolve the palette entry a track at the given position
+    /// should use. Exposed so undo-of-remove (which rebuilds a
+    /// track at the end of the list via
+    /// <see cref="Actions.AddTrackAction"/>'s snapshot path) lands
+    /// on the same colour the original add picked. Without a single
+    /// public resolver, the action would have to duplicate the
+    /// modulo-palette rule and the two could drift independently.
+    /// </summary>
+    public static (string color, string bg) PaletteAt(int index) =>
+        Palette[index % Palette.Length];
+
+    private readonly IProjectManager _projectManager;
+
     /// <summary>Tracks displayed on the timeline. The canonical list.</summary>
     public ObservableCollection<ITrackViewModel> Tracks { get; } = [];
 
-    /// <summary>Dummy chapter list for the chapter strip — placeholder data.</summary>
-    public ObservableCollection<DummyChapterViewModel> Chapters { get; } =
-    [
-        new() { Name = "Giriş",   Color = "#7C6AF7", TrackCount = "2 track", Duration = "0:32" },
-        new() { Name = "Bölüm I", Color = "#60AAFF", TrackCount = "3 track", Duration = "1:15" },
-        new() { Name = "Bölüm II",Color = "#D060FF", TrackCount = "2 track", Duration = "0:58" },
-        new() { Name = "Kapanış", Color = "#FF60A0", TrackCount = "1 track", Duration = "0:20" },
-    ];
-
-    public TrackListViewModel()
+    public TrackListViewModel(IProjectManager projectManager)
     {
-        SeedPlaceholders();
+        _projectManager = projectManager;
+
+        // ActiveChanged fires for both load and unload — the rebuild
+        // helper handles the null case (clears the collection) so
+        // there's no per-event branching here.
+        _projectManager.ActiveChanged += OnActiveChanged;
+
+        // Cover the case where a project was already opened by the
+        // time this view-model lands in DI (e.g. the launcher opened
+        // the project, then resolved this VM as part of the DAW's
+        // window construction). The event has already fired and we
+        // missed it; sync against the current Active so the DAW comes
+        // up populated rather than empty-then-lazily-filled.
+        if (_projectManager.Active is not null)
+            RebuildFromProject(_projectManager.Active);
+    }
+
+    private void OnActiveChanged(object? sender, IConstellaProject? project)
+    {
+        if (project is null)
+        {
+            Tracks.Clear();
+            return;
+        }
+        RebuildFromProject(project);
+    }
+
+    /// <summary>
+    /// Replace <see cref="Tracks"/> with view-models built from the
+    /// project's persisted track data. The collection instance is
+    /// preserved (Clear-then-Add rather than reassign) because the
+    /// view layer holds onto it directly — TrackListView's minimap
+    /// caches the reference in <c>BindMinimap</c>, and a swap would
+    /// silently leave the minimap pointing at the previous collection.
+    ///
+    /// <para>
+    /// Per-track colours come from <see cref="Palette"/> at the
+    /// track's list position, not from the persisted data. See the
+    /// class-level remarks on why colours aren't stored.
+    /// </para>
+    /// </summary>
+    private void RebuildFromProject(IConstellaProject project)
+    {
+        Tracks.Clear();
+        for (int i = 0; i < project.Tracks.Count; i++)
+        {
+            var data    = project.Tracks[i];
+            var palette = PaletteAt(i);
+            Tracks.Add(new TrackViewModel(i, data, palette.color, palette.bg));
+        }
     }
 
     /// <summary>
@@ -54,6 +131,17 @@ public sealed partial class TrackListViewModel : ViewModel
     /// and renumber every track's <see cref="ITrackViewModel.Order"/> so the
     /// sequence stays contiguous 0..N-1. The observable collection's own
     /// Move event drives the UI repaint.
+    ///
+    /// <para>
+    /// <b>This mutates view-state only.</b> The persisted project's
+    /// own track list is untouched until a corresponding action's
+    /// <c>Persist</c> step runs; the action is responsible for
+    /// calling <see cref="IConstellaProject.ReorderTracks"/> and
+    /// triggering a save. Splitting it that way keeps the view-model
+    /// usable without a project (the DAW can be opened directly for
+    /// a debugging session) and keeps undo / redo working through the
+    /// existing history machinery.
+    /// </para>
     /// </summary>
     public void Reorder(int fromIdx, int toIdx)
     {
@@ -74,12 +162,22 @@ public sealed partial class TrackListViewModel : ViewModel
     /// "Track N" is used. No blocks are seeded — the track starts
     /// empty and the user draws into it.
     ///
+    /// <para>
     /// Exposed as both a public method (for programmatic use from other
     /// VMs like a future project loader) and an <c>AddTrackCommand</c>
     /// (source-generated by <see cref="RelayCommandAttribute"/>) so XAML
     /// buttons can bind directly. The command-invoked path uses the
     /// default placeholder; the view layer's Add Track dialog calls the
     /// parameterised overload with the user's typed name.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>View-state only.</b> Same caveat as <see cref="Reorder"/>:
+    /// this adds a VM row but doesn't touch the persisted project.
+    /// The action layer (Alt-tur 3 in the persistence plan) wraps
+    /// this call and adds the corresponding
+    /// <see cref="IConstellaProject.AddTrack"/> + save.
+    /// </para>
     /// </summary>
     [RelayCommand]
     public void AddTrack() => AddTrack(null);
@@ -88,20 +186,16 @@ public sealed partial class TrackListViewModel : ViewModel
     public void AddTrack(string? customName)
     {
         var idx     = Tracks.Count;
-        var palette = NewTrackPalette[idx % NewTrackPalette.Length];
+        var palette = PaletteAt(idx);
 
         var name = string.IsNullOrWhiteSpace(customName)
             ? $"Track {idx + 1}"
             : customName.Trim();
 
-        var track = new Track
+        var vm = new TrackViewModel(idx, name, palette.color, palette.bg)
         {
-            Id      = idx,
-            Name    = name,
-            Color   = palette.color,
-            BlockBg = palette.bg,
+            Order = (byte)idx,
         };
-        var vm = new TrackViewModel(track) { Order = (byte)idx };
         Tracks.Add(vm);
     }
 
@@ -118,76 +212,22 @@ public sealed partial class TrackListViewModel : ViewModel
             Tracks[i].Order = (byte)i;
     }
 
-    // ── Placeholder seeding ──────────────────────────────────────────────
-    // Temporary until real project load replaces this. Kept inline because
-    // there is no real persistence pipeline to plug into yet.
-
-    private void SeedPlaceholders()
+    /// <summary>
+    /// Insert an already-built track view-model at the given index.
+    /// Used by the undo path of <see cref="Actions.RemoveTrackAction"/>
+    /// to put a removed track back where it was, not at the end.
+    /// Renumbers <see cref="ITrackViewModel.Order"/> across the list
+    /// so the contiguous 0..N-1 invariant holds. Out-of-range indices
+    /// are clamped, matching <see cref="IConstellaProject.InsertTrack"/>'s
+    /// permissive contract.
+    /// </summary>
+    public void InsertTrack(int index, ITrackViewModel track)
     {
-        var placeholders = new Track[]
-        {
-            new() { Id = 0, Name = "Narrator",   Color = "#7C6AF7", BlockBg = "#2A2560" },
-            new() { Id = 1, Name = "Karakter A", Color = "#60AAFF", BlockBg = "#1A3A5C" },
-            new() { Id = 2, Name = "Karakter B", Color = "#FF60A0", BlockBg = "#3A1A3A" },
-        };
+        if (index < 0)           index = 0;
+        if (index > Tracks.Count) index = Tracks.Count;
 
-        byte orderCounter = 0;
-        foreach (var track in placeholders)
-        {
-            var vm = new TrackViewModel(track) { Order = orderCounter++ };
-
-            if (track.Id == 0)
-            {
-                // Narrator — two blocks spanning opening and Chapter I intro.
-                vm.Sections.Add(new SectionViewModel
-                {
-                    Label       = "Narrator · Giriş metni…",
-                    Bg          = track.BlockBg,
-                    AccentColor = track.Color,
-                    StartSec    = 0.5,
-                    DurationSec = 5,
-                    Emotion     = 15,
-                    Dirty       = false,
-                });
-                vm.Sections.Add(new SectionViewModel
-                {
-                    Label       = "Narrator · Bölüm I açılışı…",
-                    Bg          = track.BlockBg,
-                    AccentColor = track.Color,
-                    StartSec    = 12,
-                    DurationSec = 9,
-                    Emotion     = 20,
-                    Dirty       = false,
-                });
-            }
-            else if (track.Id == 1)
-            {
-                vm.Sections.Add(new SectionViewModel
-                {
-                    Label       = "Karakter A · Dialog…",
-                    Bg          = track.BlockBg,
-                    AccentColor = track.Color,
-                    StartSec    = 6.5,
-                    DurationSec = 5.5,
-                    Emotion     = 75,
-                    Dirty       = true,
-                });
-            }
-            else if (track.Id == 2)
-            {
-                vm.Sections.Add(new SectionViewModel
-                {
-                    Label       = "Karakter B · Cevap…",
-                    Bg          = track.BlockBg,
-                    AccentColor = track.Color,
-                    StartSec    = 17,
-                    DurationSec = 6,
-                    Emotion     = 60,
-                    Dirty       = false,
-                });
-            }
-
-            Tracks.Add(vm);
-        }
+        Tracks.Insert(index, track);
+        for (int i = 0; i < Tracks.Count; i++)
+            Tracks[i].Order = (byte)i;
     }
 }

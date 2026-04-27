@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ConstellaTTS.SDK\ConstellaTTS.SDK.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <!--
+            NAudio handles input decoding for the formats users drop on
+            us — MP3, AIFF, AAC, etc. Windows-only for now: NAudio's
+            MP3 reader leans on ACM/MediaFoundation in places, and the
+            decoder implementations in this project guard NAudio usage
+            behind #if WINDOWS. When a Linux/macOS build is needed,
+            add a parallel ItemGroup with NLayer (pure-managed MP3) or
+            similar and an #else branch in the decoders.
+        -->
+        <PackageReference Include="NAudio" Version="2.2.1" />
+    </ItemGroup>
+
+</Project>

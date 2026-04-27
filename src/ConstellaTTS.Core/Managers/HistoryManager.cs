@@ -28,14 +28,14 @@ namespace ConstellaTTS.Core.Managers;
 ///  · On exception either stack is restored to its pre-call state.
 /// </summary>
 public sealed class HistoryManager(
-    ILoggerFactory      loggerFactory,
-    Lazy<IConstellaApp> app) : IHistoryManager
+    ILoggerFactory loggerFactory,
+    IConstellaApp  app) : IHistoryManager
 {
     private readonly Stack<IReversible> _undoStack = new();
     private readonly Stack<IReversible> _redoStack = new();
     private readonly ILogger            _log       = loggerFactory.CreateLogger(LogCategory.WindowProcess);
 
-    private INavigationManager Nav => app.Value.NavigationManager;
+
 
     public bool ShowIrreversibleDialog { get; set; } = true;
 
@@ -67,7 +67,7 @@ public sealed class HistoryManager(
 
     // ── Undo ────────────────────────────────────────────────────────────
 
-    public void Rollback(params object[] args)
+    public void Rollback(object? data = null)
     {
         if (!_undoStack.TryPop(out var entry))
         {
@@ -82,7 +82,7 @@ public sealed class HistoryManager(
             _log.LogInformation("Rollback: [{Id}] {Name} (remaining undo={Depth})",
                 entry.Id, entry.Name, _undoStack.Count);
 
-            var inverse = entry.Reverse(previous, args);
+            var inverse = entry.Reverse(previous, data);
             ExecuteInverse(inverse);
 
             PushToRedoIfReversible(inverse, origin: entry);
@@ -95,7 +95,7 @@ public sealed class HistoryManager(
         }
     }
 
-    public void Rollback(IReversible rollbackTo, params object[] args)
+    public void Rollback(IReversible rollbackTo, object? data = null)
     {
         if (!_undoStack.Contains(rollbackTo))
         {
@@ -116,7 +116,7 @@ public sealed class HistoryManager(
 
             try
             {
-                var inverse = entry.Reverse(previous, args);
+                var inverse = entry.Reverse(previous, data);
                 ExecuteInverse(inverse);
                 reversedTrail.Push(entry);
 
@@ -140,7 +140,7 @@ public sealed class HistoryManager(
 
     // ── Redo ────────────────────────────────────────────────────────────
 
-    public void Redo(params object[] args)
+    public void Redo(object? data = null)
     {
         if (!_redoStack.TryPop(out var entry))
         {
@@ -161,7 +161,7 @@ public sealed class HistoryManager(
             // The redo entry IS an inverse-of-an-undone-action. Calling
             // Reverse() on it produces the forward action — the thing
             // that restores the state we left when the user hit Ctrl+Z.
-            var forward = entry.Reverse(previous, args);
+            var forward = entry.Reverse(previous, data);
             ExecuteInverse(forward);
 
             // Extend the undo chain so the same action can be undone again.
@@ -194,7 +194,7 @@ public sealed class HistoryManager(
     private void ExecuteInverse(IAction action)
     {
         if (action is NavigationRequest navRequest)
-            Nav.ApplyOnly(navRequest);
+            app.NavigationManager.Value.ApplyOnly(navRequest);
         else
             action.Execute();
     }

@@ -75,7 +75,7 @@ public interface IHistoryManager
     /// execute the returned action, and push that action onto the redo stack
     /// when it is itself <see cref="IReversible"/>.
     /// </summary>
-    void Rollback(params object[] args);
+    void Rollback(object? data = null);
 
     /// <summary>
     /// Pop and reverse all entries down to and including <paramref name="rollbackTo"/>.
@@ -83,14 +83,14 @@ public interface IHistoryManager
     /// so an unbounded Ctrl+Y chain can walk forward through the same path.
     /// No-op if <paramref name="rollbackTo"/> is not present.
     /// </summary>
-    void Rollback(IReversible rollbackTo, params object[] args);
+    void Rollback(IReversible rollbackTo, object? data = null);
 
     /// <summary>
     /// Pop the most recent redo entry, call <see cref="IReversible.Reverse"/>
     /// to obtain the forward action, execute it, and push that forward action
     /// back onto the undo stack when it is itself reversible.
     /// </summary>
-    void Redo(params object[] args);
+    void Redo(object? data = null);
 
     /// <summary>Clear both undo and redo stacks.</summary>
     void Clear();

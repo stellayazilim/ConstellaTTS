@@ -5,8 +5,10 @@
              xmlns:controls="using:ConstellaTTS.Core.Controls"
              xmlns:dsslider="using:ConstellaTTS.SDK.DesignSystem.Controls.Slider"
              xmlns:viewModelContracts="clr-namespace:ConstellaTTS.SDK.ViewModelContracts;assembly=ConstellaTTS.SDK"
+             xmlns:converters="using:ConstellaTTS.Core.Converters"
              x:Class="ConstellaTTS.Core.Views.TrackListView"
-             x:DataType="vm:TrackListViewModel">
+             x:DataType="vm:TrackListViewModel"
+             DragDrop.AllowDrop="True">
 
     <UserControl.Styles>
         <!-- Force-load the ConstellaSlider styles locally. The style
@@ -187,10 +189,15 @@
                                                     <!-- Section — TTS block with emotion + dirty indicators.
                                                          Width and X come from TimelineItemsPanel during arrange,
                                                          so the template doesn't set them: the Border just
-                                                         stretches to whatever rect the panel hands it. -->
+                                                         stretches to whatever rect the panel hands it.
+                                                         A 2px accent border lights up while a sample is
+                                                         being dragged over the section (IsDropTarget),
+                                                         giving the user a clear target preview. -->
                                                     <DataTemplate DataType="viewModelContracts:ISectionViewModel">
                                                         <Border CornerRadius="3"
                                                                 Background="{Binding Bg}"
+                                                                BorderBrush="{DynamicResource AccentCyan}"
+                                                                BorderThickness="{Binding IsDropTarget, Converter={x:Static converters:DropTargetThicknessConverter.Instance}}"
                                                                 ClipToBounds="True">
                                                             <Grid>
                                                                 <!-- Dirty indicator: 3px yellow strip on left edge -->
@@ -293,6 +300,43 @@
                            FontSize="11"
                            FontFamily="{DynamicResource FontMono}"
                            Foreground="{DynamicResource FgPrimary}" />
+            </Border>
+
+            <!-- Sample drag preview — small floating card that follows the
+                 cursor while a sample is being dragged from the library. The
+                 native OS drag cursor doesn't carry any payload context
+                 (Avalonia 12 has no drag-image API), so we render our own
+                 hint here using the same RenderTransform trick the track
+                 reorder preview uses. Hit-test invisible so it never
+                 intercepts drop-target events.
+
+                 Visibility / position / label are driven from
+                 OnSampleDragOver in code-behind: shown with the dragged
+                 sample's name when a section is hoverable below the
+                 cursor, hidden on DragLeave / Drop. -->
+            <Border x:Name="SampleDragPreview"
+                    IsHitTestVisible="False"
+                    IsVisible="False"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="{DynamicResource BgElevated}"
+                    BorderBrush="{DynamicResource AccentCyan}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8,5"
+                    BoxShadow="0 6 18 0 #80000000"
+                    Opacity="0.95">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="🎤"
+                               FontSize="11"
+                               Foreground="{DynamicResource AccentCyan}"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="SampleDragPreviewLabel"
+                               FontSize="11"
+                               FontFamily="{DynamicResource FontMono}"
+                               Foreground="{DynamicResource FgPrimary}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
             </Border>
 
             <!-- Block editor overlay — opens when a block is selected. Floats

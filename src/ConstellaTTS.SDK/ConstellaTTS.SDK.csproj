@@ -10,11 +10,18 @@
         <PackageReference Include="Avalonia" Version="12.0.1" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+        <!--
+            MessagePack is the project-wide binary serialization
+            convention: per-project manifests (.ctts), the registry
+            file, and any future on-disk artefact written by the
+            application use it. Lives in the SDK rather than a single
+            implementation project because the data contracts
+            (ProjectManifest, ProjectEntry, …) are themselves part of
+            the SDK surface and need the [MessagePackObject] /
+            [Key] attributes to be visible to consumers.
+        -->
+        <PackageReference Include="MessagePack" Version="3.1.4" />
         <PackageReference Include="Xaml.Behaviors" Version="12.0.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\ConstellaTTS.Domain\ConstellaTTS.Domain.csproj" />
     </ItemGroup>
 
 </Project>

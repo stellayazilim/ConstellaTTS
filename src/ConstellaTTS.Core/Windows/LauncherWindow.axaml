@@ -1,0 +1,524 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:ConstellaTTS.Core.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="640"
+        x:Class="ConstellaTTS.Core.Windows.LauncherWindow"
+        x:DataType="vm:LauncherWindowViewModel"
+        Title="ConstellaTTS · Launcher"
+        Width="880" Height="640"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBase}"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="False">
+
+    <!-- Single 1px frame around the whole window. The launcher is
+         non-resizable, so unlike MainWindow we don't need a 3×3
+         resize-grip grid — just a thin border + custom titlebar. -->
+    <Border BorderBrush="{StaticResource BorderMid}"
+            BorderThickness="1"
+            CornerRadius="12"
+            ClipToBounds="True">
+
+        <Grid RowDefinitions="32,*">
+
+            <!-- ══════════════════════════════════════════════════════
+                 TITLEBAR
+                 The launcher's titlebar is bare: a single label on the
+                 left, drag area filling the middle, min/close on the
+                 right. No menu, no maximize (fixed size).
+            ═══════════════════════════════════════════════════════ -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource BgRibbon}"
+                    BorderBrush="{StaticResource BorderSubtle}"
+                    BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+
+                    <TextBlock Grid.Column="0"
+                               Text="ConstellaTTS · Launcher"
+                               Margin="12,0"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               LetterSpacing="2"
+                               FontFamily="{StaticResource FontMono}"
+                               Foreground="{StaticResource FgMuted}" />
+
+                    <!-- Drag area fills the centre. Border with a
+                         transparent fill is the idiomatic Avalonia way
+                         to get a hit-test target without painting. -->
+                    <Border Grid.Column="1"
+                            x:Name="TitleBarDragArea"
+                            Background="Transparent"
+                            IsHitTestVisible="True" />
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="0">
+                        <Button x:Name="MinimizeBtn"
+                                Width="40" Height="32"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{StaticResource FgSecondary}"
+                                Content="─" />
+                        <Button x:Name="CloseBtn"
+                                Width="40" Height="32"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{StaticResource FgSecondary}"
+                                Content="✕" />
+                    </StackPanel>
+
+                </Grid>
+            </Border>
+
+            <!-- ══════════════════════════════════════════════════════
+                 BODY — split into LEFT (brand + actions) and
+                 RIGHT (recent projects).
+            ═══════════════════════════════════════════════════════ -->
+            <Grid Grid.Row="1"
+                  ColumnDefinitions="340,*">
+
+                <!-- ══════════════════════════════════════════════════
+                     LEFT — brand, primary actions, engine status
+                ═══════════════════════════════════════════════════ -->
+                <Border Grid.Column="0"
+                        Background="{StaticResource BgRibbon}"
+                        BorderBrush="{StaticResource BorderSubtle}"
+                        BorderThickness="0,0,1,0">
+
+                    <!-- Padding container for the whole left column. -->
+                    <Grid RowDefinitions="Auto,*,Auto"
+                          Margin="32,36,32,24">
+
+                        <!-- ── Brand ────────────────────────────────── -->
+                        <StackPanel Grid.Row="0" Spacing="14">
+
+                            <!-- Logo SVG — translated from the HTML mock.
+                                 Two arc paths and a constellation of
+                                 highlights converge into a single Canvas
+                                 sized 64×64 to match the original. -->
+                            <Canvas Width="64" Height="64">
+                                <Canvas.Resources>
+                                    <LinearGradientBrush x:Key="LogoStroke"
+                                                         StartPoint="0%,0%"
+                                                         EndPoint="100%,100%">
+                                        <GradientStop Offset="0"   Color="#60aaff" />
+                                        <GradientStop Offset="0.5" Color="#7c6af7" />
+                                        <GradientStop Offset="1"   Color="#9b4dca" />
+                                    </LinearGradientBrush>
+                                </Canvas.Resources>
+
+                                <!-- Open arc — the constellation's "C". -->
+                                <Path Stroke="{StaticResource LogoStroke}"
+                                      StrokeThickness="6"
+                                      StrokeLineCap="Round"
+                                      Data="M 43,9 A 23,23 0 1 0 43,55" />
+
+                                <!-- Connecting lines between stars. -->
+                                <Path Stroke="#a0b4e0"
+                                      StrokeThickness="1.4"
+                                      Opacity="0.5"
+                                      Data="M 36,14 L 23,27 M 23,27 L 20,38 M 23,27 L 32,32 M 32,32 L 45,25" />
+
+                                <!-- Star highlights — small filled
+                                     ellipses approximating the original
+                                     four-point star sparkles. The full
+                                     SVG used a radial gradient + filter
+                                     stack; the Avalonia translation keeps
+                                     the visual gesture without the filter
+                                     pipeline. -->
+                                <Ellipse Canvas.Left="33" Canvas.Top="11"
+                                         Width="6" Height="6"
+                                         Fill="White" />
+                                <Ellipse Canvas.Left="42" Canvas.Top="22"
+                                         Width="5" Height="5"
+                                         Fill="White" Opacity="0.95" />
+                                <Ellipse Canvas.Left="21" Canvas.Top="25"
+                                         Width="3" Height="3"
+                                         Fill="White" Opacity="0.85" />
+                                <Ellipse Canvas.Left="30" Canvas.Top="30"
+                                         Width="2.5" Height="2.5"
+                                         Fill="White" Opacity="0.75" />
+                                <Ellipse Canvas.Left="18" Canvas.Top="36"
+                                         Width="2" Height="2"
+                                         Fill="White" Opacity="0.65" />
+                            </Canvas>
+
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="CONSTELLATTS"
+                                           FontFamily="{StaticResource FontBrand}"
+                                           FontSize="22"
+                                           FontWeight="Bold"
+                                           LetterSpacing="3"
+                                           Foreground="{StaticResource GradientHero}" />
+
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="10"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding VersionLabel}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               LetterSpacing="1.5"
+                                               Foreground="{StaticResource FgMuted}" />
+                                    <Border Background="#1050E0FF"
+                                            BorderBrush="#3050E0FF"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="6,2">
+                                        <TextBlock Text="{Binding VersionPill}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="10"
+                                                   LetterSpacing="0.5"
+                                                   Foreground="{StaticResource AccentCyan}" />
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+
+                        </StackPanel>
+
+                        <!-- ── Action stack ─────────────────────────── -->
+                        <StackPanel Grid.Row="1"
+                                    Spacing="10"
+                                    Margin="0,36,0,0">
+
+                            <!-- Proje Aç — primary action, violet accent.
+                                 CommandParameter passes the button itself
+                                 so the VM can resolve TopLevel without
+                                 needing a code-behind handler. -->
+                            <Button Classes="action-card primary"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    Padding="14"
+                                    Background="{StaticResource BgElevated}"
+                                    BorderBrush="{StaticResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Command="{Binding OpenProjectCommand}"
+                                    CommandParameter="{Binding $self}">
+                                <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="12">
+                                    <Border Grid.Column="0"
+                                            Width="36" Height="36"
+                                            Background="#247C6AF7"
+                                            BorderBrush="#487C6AF7"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                        <TextBlock Text="⏵"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentPurple}" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Spacing="2">
+                                        <TextBlock Text="Proje Aç"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource FgPrimary}" />
+                                        <TextBlock Text="Disktek bir .ctts klasörü seç"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource FgMuted}" />
+                                    </StackPanel>
+                                    <Border Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Background="{StaticResource BgRibbon}"
+                                            BorderBrush="{StaticResource BorderSubtle}"
+                                            BorderThickness="1"
+                                            CornerRadius="3"
+                                            Padding="5,2">
+                                        <TextBlock Text="Ctrl+O"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource FgMuted}" />
+                                    </Border>
+                                </Grid>
+                            </Button>
+
+                            <!-- Yeni Proje — secondary, blue accent. -->
+                            <Button Classes="action-card secondary"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    Padding="14"
+                                    Background="{StaticResource BgElevated}"
+                                    BorderBrush="{StaticResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Command="{Binding NewProjectCommand}"
+                                    CommandParameter="{Binding $self}">
+                                <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="12">
+                                    <Border Grid.Column="0"
+                                            Width="36" Height="36"
+                                            Background="#1A60AAFF"
+                                            BorderBrush="#4760AAFF"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                        <TextBlock Text="+"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="16"
+                                                   FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBlue}" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Spacing="2">
+                                        <TextBlock Text="Yeni Proje"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource FgPrimary}" />
+                                        <TextBlock Text="İsim ve konum belirle"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource FgMuted}" />
+                                    </StackPanel>
+                                    <Border Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Background="{StaticResource BgRibbon}"
+                                            BorderBrush="{StaticResource BorderSubtle}"
+                                            BorderThickness="1"
+                                            CornerRadius="3"
+                                            Padding="5,2">
+                                        <TextBlock Text="Ctrl+N"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource FgMuted}" />
+                                    </Border>
+                                </Grid>
+                            </Button>
+
+                        </StackPanel>
+
+                        <!-- ── Engine status footer ─────────────────── -->
+                        <StackPanel Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Bottom">
+                            <Ellipse Width="6" Height="6"
+                                     Fill="{StaticResource StatusSuccess}" />
+                            <TextBlock Text="{Binding StatusText}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="10"
+                                       LetterSpacing="0.5"
+                                       Foreground="{StaticResource FgMuted}" />
+                        </StackPanel>
+
+                    </Grid>
+                </Border>
+
+                <!-- ══════════════════════════════════════════════════
+                     RIGHT — recent projects
+                ═══════════════════════════════════════════════════ -->
+                <Grid Grid.Column="1" RowDefinitions="48,*">
+
+                    <!-- Recent header: title + count badge + search box. -->
+                    <Border Grid.Row="0"
+                            Background="{StaticResource BgRibbon}"
+                            BorderBrush="{StaticResource BorderSubtle}"
+                            BorderThickness="0,0,0,1">
+                        <Grid ColumnDefinitions="Auto,Auto,*,180"
+                              ColumnSpacing="12"
+                              Margin="22,0">
+
+                            <TextBlock Grid.Column="0"
+                                       Text="TANINAN PROJELER"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       FontWeight="Medium"
+                                       LetterSpacing="2"
+                                       Foreground="{StaticResource FgMuted}" />
+
+                            <Border Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource BgElevated}"
+                                    BorderBrush="{StaticResource BorderSubtle}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Padding="6,1">
+                                <TextBlock Text="{Binding FilteredRecent.Count}"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource FgMuted}" />
+                            </Border>
+
+                            <!-- Spacer — Grid star column. -->
+                            <Panel Grid.Column="2" />
+
+                            <!-- Search field. The TextBox itself carries
+                                 the styling; design-system class hooks
+                                 (g-input-field equivalent) can be added
+                                 later. -->
+                            <Border Grid.Column="3"
+                                    VerticalAlignment="Center"
+                                    Height="26"
+                                    Background="{StaticResource BgElevated}"
+                                    BorderBrush="{StaticResource BorderMid}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="8,0">
+                                <TextBox Background="Transparent"
+                                         BorderThickness="0"
+                                         FontSize="11"
+                                         Padding="0"
+                                         VerticalContentAlignment="Center"
+                                         Watermark="Ara…"
+                                         Text="{Binding SearchText}" />
+                            </Border>
+
+                        </Grid>
+                    </Border>
+
+                    <!-- Recent list. ItemsRepeater on a virtualizing
+                         stack panel keeps memory predictable when the
+                         list grows; for the launcher's typical ~20-50
+                         entries it's overkill but cheap. -->
+                    <ScrollViewer Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding FilteredRecent}"
+                                      Padding="0,6">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:LauncherWindowViewModel+RecentProjectRow">
+
+                                    <Button Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="22,10"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch"
+                                            Command="{Binding $parent[ItemsControl].((vm:LauncherWindowViewModel)DataContext).OpenRecentCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Grid ColumnDefinitions="44,*,Auto,Auto"
+                                              ColumnSpacing="12">
+
+                                            <!-- Project initial badge.
+                                                 The mock had a per-project
+                                                 mini-timeline thumbnail
+                                                 stitched together from
+                                                 fake bar histograms; with
+                                                 the registry holding only
+                                                 path metadata, we can't
+                                                 honestly render that, and
+                                                 making one up would lie
+                                                 about project shape. The
+                                                 first letter of the name
+                                                 over the accent colour is
+                                                 a cheaper, truthful badge
+                                                 that still gives each row
+                                                 a visual anchor. A real
+                                                 thumbnail can come back
+                                                 once a manifest is
+                                                 cheap to read at
+                                                 launcher boot. -->
+                                            <Border Grid.Column="0"
+                                                    Width="44" Height="44"
+                                                    Background="{StaticResource BgElevated}"
+                                                    BorderBrush="{StaticResource BorderSubtle}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                <TextBlock Text="{Binding Name[0]}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontFamily="{StaticResource FontBrand}"
+                                                           FontSize="18"
+                                                           FontWeight="Bold"
+                                                           Foreground="{StaticResource AccentPurple}" />
+                                            </Border>
+
+                                            <!-- Name + path. -->
+                                            <StackPanel Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Spacing="2">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <TextBlock Text="★"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource AccentCyan}"
+                                                               IsVisible="{Binding Pinned}" />
+                                                    <TextBlock Text="{Binding Name}"
+                                                               FontSize="13"
+                                                               FontWeight="Medium"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{StaticResource FgPrimary}" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Path}"
+                                                           FontFamily="{StaticResource FontMono}"
+                                                           FontSize="11"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{StaticResource FgMuted}" />
+                                            </StackPanel>
+
+                                            <!-- Meta line: just last
+                                                 opened for now. Track and
+                                                 block counts are removed
+                                                 because the registry
+                                                 doesn't carry them — they
+                                                 require reading the
+                                                 project manifest, which
+                                                 the launcher deliberately
+                                                 doesn't do up front. They
+                                                 can come back once an
+                                                 inexpensive manifest read
+                                                 is wired in. -->
+                                            <TextBlock Grid.Column="2"
+                                                       VerticalAlignment="Center"
+                                                       Width="110"
+                                                       TextAlignment="Right"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontSize="10"
+                                                       Foreground="{StaticResource FgMuted}"
+                                                       Text="{Binding LastOpened}" />
+
+                                            <!-- Hover actions: reveal in
+                                                 folder + remove from list.
+                                                 Always visible for now;
+                                                 hover-only opacity can be
+                                                 added with a style trigger
+                                                 later if the row becomes
+                                                 too noisy. -->
+                                            <StackPanel Grid.Column="3"
+                                                        VerticalAlignment="Center"
+                                                        Orientation="Horizontal"
+                                                        Margin="8,0,0,0"
+                                                        Spacing="4">
+                                                <Button Width="24" Height="24"
+                                                        Padding="0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Foreground="{StaticResource FgMuted}"
+                                                        FontSize="12"
+                                                        ToolTip.Tip="Konumda göster"
+                                                        Content="▦"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LauncherWindowViewModel)DataContext).ShowInFolderCommand}"
+                                                        CommandParameter="{Binding}" />
+                                                <Button Width="24" Height="24"
+                                                        Padding="0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Foreground="{StaticResource FgMuted}"
+                                                        FontSize="12"
+                                                        ToolTip.Tip="Listeden kaldır"
+                                                        Content="×"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LauncherWindowViewModel)DataContext).RemoveRecentCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+
+                                        </Grid>
+                                    </Button>
+
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                </Grid>
+
+            </Grid>
+
+        </Grid>
+    </Border>
+
+</Window>

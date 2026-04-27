@@ -1,19 +1,34 @@
-using Microsoft.Extensions.DependencyInjection;
 using ConstellaTTS.SDK.App;
+using ConstellaTTS.SDK.History;
 using ConstellaTTS.SDK.Theme;
 using ConstellaTTS.SDK.UI.Navigation;
-using ConstellaTTS.SDK.History;
 
 namespace ConstellaTTS.Core;
 
 /// <summary>
-/// Central application context — pure service accessor.
-/// All properties resolve lazily from the DI container.
+/// Default <see cref="IConstellaApp"/>. Holds the
+/// <see cref="Lazy{T}"/> handles supplied by the container; every
+/// access goes through the same handle, so first-use does the
+/// container lookup and every subsequent read is a cached field
+/// access.
+///
+/// <para>
+/// <b>No <see cref="IServiceProvider"/> dependency.</b> Earlier
+/// revisions held an <see cref="IServiceProvider"/> reference so the
+/// properties could resolve services on demand — convenient, but it
+/// re-introduced the service-locator pattern this layer was built
+/// to avoid. With <see cref="Lazy{T}"/> threaded through the
+/// constructor, the container is the one wiring up the deferred
+/// lookups; <see cref="ConstellaApp"/> never needs to hold the
+/// container.
+/// </para>
 /// </summary>
-public sealed class ConstellaApp(IServiceProvider services) : IConstellaApp
+public sealed class ConstellaApp(
+    Lazy<IHistoryManager>    history,
+    Lazy<INavigationManager> navigation,
+    Lazy<IThemeProvider>     theme) : IConstellaApp
 {
-    public IServiceProvider          Services          { get; } = services;
-    public IHistoryManager           HistoryManager    => services.GetRequiredService<IHistoryManager>();
-    public INavigationManager        NavigationManager => services.GetRequiredService<INavigationManager>();
-    public IThemeProvider            ThemeProvider     => services.GetRequiredService<IThemeProvider>();
+    public Lazy<IHistoryManager>    HistoryManager    => history;
+    public Lazy<INavigationManager> NavigationManager => navigation;
+    public Lazy<IThemeProvider>     ThemeProvider     => theme;
 }
